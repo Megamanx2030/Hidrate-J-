@@ -44,6 +44,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +74,9 @@ fun HomeScreen(
     onOpenSettings: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+
+    var dummyProgress by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0f) }
+    var isEmptying by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     // Use safe division to avoid divide-by-zero
     val glassSizeMl = settings.glassSizeMl.coerceAtLeast(1)
@@ -140,6 +144,7 @@ fun HomeScreen(
                 onClick = onOpenSettings,
                 modifier = Modifier
                     .size(44.dp)
+                    .background(Color.White, CircleShape)
                     .testTag("settings_button")
             ) {
                 Icon(
@@ -173,12 +178,32 @@ fun HomeScreen(
             contentAlignment = Alignment.Center
         ) {
             com.example.ui.components.AnimatedWaterGlass(
-                progress = dailyProgress,
-                cupsDrunk = cupsDrunk,
+                progress = dummyProgress,
+                cupsDrunk = (dummyProgress * totalCupsTarget).toInt(),
                 totalCupsTarget = totalCupsTarget,
                 todayTotalMl = todayTotalMl,
                 dailyGoalMl = dailyGoalMl,
-                modifier = Modifier.size(260.dp, 260.dp)
+                modifier = Modifier
+                    .size(260.dp, 260.dp)
+                    .clickable(
+                        interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            if (!isEmptying) {
+                                dummyProgress += 0.2f
+                                if (dummyProgress >= 1f) {
+                                    dummyProgress = 1f
+                                    isEmptying = true
+                                }
+                            } else {
+                                dummyProgress -= 0.2f
+                                if (dummyProgress <= 0f) {
+                                    dummyProgress = 0f
+                                    isEmptying = false
+                                }
+                            }
+                        }
+                    )
             )
         }
 
@@ -212,68 +237,26 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium
             )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Main Add Water Button
-        Button(
-            onClick = { onAddWater(settings.glassSizeMl) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .testTag("add_water_button"),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = com.example.ui.theme.CyanAction,
-                contentColor = Color.White
-            ),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Marque se bebeu água (+${settings.glassSizeMl}ml)",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Custom Amount Option Button
-        OutlinedButton(
-            onClick = onOpenAddDialog,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(46.dp)
-                .testTag("custom_amount_button"),
-            shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.CyanAction)
-        ) {
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Outra Quantidade",
-                style = MaterialTheme.typography.labelMedium,
-                color = com.example.ui.theme.CyanAction,
+                text = "Medida atual: ${settings.glassSizeMl}ml",
+                style = MaterialTheme.typography.bodyLarge,
+                color = PrimaryBlue,
                 fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Toque no copo para beber!",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
-
-
+        Spacer(modifier = Modifier.height(24.dp))
         // Next Reminder Card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SecondaryContainer),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
             shape = RoundedCornerShape(14.dp)
         ) {
             Row(

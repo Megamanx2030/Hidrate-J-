@@ -24,9 +24,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.ModeNight
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -473,9 +475,35 @@ fun RemindersScreen(
                                     )
                                 }
                             }
+                            
+                            Spacer(modifier = Modifier.width(8.dp))
+                            
+                            val timeParts = reminder.time.split(":")
+                            val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 0
+                            val isDay = hour in 6..17
+                            val timeIcon = if (isDay) Icons.Default.WbSunny else Icons.Default.ModeNight
+                            val timeIconColor = if (isDay) Color(0xFFFFC107) else Color(0xFF90CAF9)
+                            
+                            Icon(
+                                imageVector = timeIcon,
+                                contentDescription = null,
+                                tint = timeIconColor,
+                                modifier = Modifier.size(26.dp).padding(end = 4.dp)
+                            )
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Marque se bebeu",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "água / esqueceu",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                             // Toggle completed button
                             IconButton(
                                 onClick = { onToggleCompleted(reminder) },
@@ -504,6 +532,7 @@ fun RemindersScreen(
                                     tint = PrimaryBlue,
                                     modifier = Modifier.size(20.dp)
                                 )
+                            }
                             }
                         }
                     }

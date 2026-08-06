@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,22 +84,49 @@ fun AnimatedWaterGlass(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
+        // Wooden Sign and Arms are now drawn on the Canvas
+
         // Glass Cup Canvas
         Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
             val height = size.height
 
             // Dimensions matching MiniWaterGlassIcon geometry proportionally
-            val topW = width * 0.78f
-            val botW = width * 0.54f
-            val glassH = height * 0.80f
+            val topW = width * 0.60f
+            val botW = width * 0.45f
+            val glassH = height * 0.75f
 
-            val leftTop = (width - topW) / 2f
+            val leftTop = (width - topW) / 2f + 30f // Shift right
             val rightTop = leftTop + topW
-            val leftBot = (width - botW) / 2f
+            val leftBot = (width - botW) / 2f + 30f
             val rightBot = leftBot + botW
-            val topY = height * 0.10f
+            val topY = height * 0.15f
             val botY = topY + glassH
+
+            // Stick
+            val stickX = leftTop - 45f
+            val stickTopY = topY + glassH * 0.1f
+            drawRect(
+                color = Color(0xFF5D4037),
+                topLeft = Offset(stickX - 5f, stickTopY),
+                size = Size(10f, glassH * 0.7f)
+            )
+
+            // Left Arm (holding stick)
+            val leftArmPath = Path().apply {
+                moveTo(leftTop + 10f, botY - glassH * 0.45f)
+                quadraticTo(leftTop - 15f, botY - glassH * 0.30f, stickX + 5f, botY - glassH * 0.45f)
+            }
+            drawPath(leftArmPath, color = PrimaryBlue, style = Stroke(width = 12f, cap = StrokeCap.Round))
+            drawCircle(color = PrimaryBlue, radius = 9f, center = Offset(stickX + 5f, botY - glassH * 0.45f)) // Hand
+
+            // Right Arm (waving)
+            val rightArmPath = Path().apply {
+                moveTo(rightTop - 10f, botY - glassH * 0.45f)
+                quadraticTo(rightTop + 35f, botY - glassH * 0.40f, rightTop + 45f, botY - glassH * 0.65f)
+            }
+            drawPath(rightArmPath, color = PrimaryBlue, style = Stroke(width = 12f, cap = StrokeCap.Round))
+            drawCircle(color = PrimaryBlue, radius = 9f, center = Offset(rightTop + 45f, botY - glassH * 0.65f)) // Hand
 
             // Path defining the outer Glass Cup shape
             val glassPath = Path().apply {
@@ -170,12 +199,12 @@ fun AnimatedWaterGlass(
                         drawCircle(
                             color = Color(0x66FFFFFF),
                             radius = 6f,
-                            center = Offset(width * 0.42f, bubble1Y)
+                            center = Offset(width * 0.42f + 30f, bubble1Y)
                         )
                         drawCircle(
                             color = Color(0x66FFFFFF),
                             radius = 4f,
-                            center = Offset(width * 0.58f, bubble2Y)
+                            center = Offset(width * 0.58f + 30f, bubble2Y)
                         )
                     }
                 }
@@ -204,20 +233,58 @@ fun AnimatedWaterGlass(
                 cap = StrokeCap.Round
             )
             
-            // Smiley Face
-            val faceColor = PrimaryBlue
-            val eyeRadius = 7f
-            // Left eye
-            drawCircle(color = faceColor, radius = eyeRadius, center = Offset(width * 0.40f, botY - glassH * 0.40f))
-            // Right eye
-            drawCircle(color = faceColor, radius = eyeRadius, center = Offset(width * 0.60f, botY - glassH * 0.40f))
+            // Dynamic Smiley Face
+            val faceY = botY - glassH * 0.40f
+            val isFaceUnderwater = if (fillLevel > 0.01f) {
+                val waterHeight = (botY - topY - 8f) * fillLevel
+                val currentWaterY = botY - 3f - waterHeight
+                currentWaterY < faceY
+            } else false
             
-            // Smile
+            val faceColor = if (isFaceUnderwater) Color.White else Color(0xFF001533)
+            val eyeRadius = 7.5f + (fillLevel * 1.5f) // Eyes get slightly larger
+            
+            // Left eye
+            drawCircle(color = faceColor, radius = eyeRadius, center = Offset(width * 0.40f + 30f, faceY))
+            // Right eye
+            drawCircle(color = faceColor, radius = eyeRadius, center = Offset(width * 0.60f + 30f, faceY))
+            
+            // Smile gets wider and happier
+            val smileControlY = botY - glassH * (0.16f - (fillLevel * 0.05f))
             val smilePath = Path().apply {
-                moveTo(width * 0.38f, botY - glassH * 0.28f)
-                quadraticTo(width * 0.50f, botY - glassH * 0.16f, width * 0.62f, botY - glassH * 0.28f)
+                moveTo(width * 0.36f + 30f, botY - glassH * 0.28f)
+                quadraticTo(width * 0.50f + 30f, smileControlY, width * 0.64f + 30f, botY - glassH * 0.28f)
             }
-            drawPath(smilePath, color = faceColor, style = Stroke(width = 6f, cap = StrokeCap.Round))
+            drawPath(smilePath, color = faceColor, style = Stroke(width = 7f + (fillLevel * 2f), cap = StrokeCap.Round))
+            
+            // Sign Board
+            val boardW = 95f
+            val boardH = 55f
+            val boardLeft = stickX - boardW / 2f
+            val boardTop = stickTopY - 10f
+            
+            drawRoundRect(
+                color = Color(0xFF8D6E63),
+                topLeft = Offset(boardLeft, boardTop),
+                size = Size(boardW, boardH),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f)
+            )
+            drawRoundRect(
+                color = Color(0xFF5D4037),
+                topLeft = Offset(boardLeft, boardTop),
+                size = Size(boardW, boardH),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f),
+                style = Stroke(width = 4f)
+            )
+            
+            val paint = android.graphics.Paint().apply {
+                color = android.graphics.Color.WHITE
+                textSize = 20f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+            drawContext.canvas.nativeCanvas.drawText("HORA DE", stickX, boardTop + boardH * 0.45f, paint)
+            drawContext.canvas.nativeCanvas.drawText("BEBER!", stickX, boardTop + boardH * 0.85f, paint)
         }
     }
 }
