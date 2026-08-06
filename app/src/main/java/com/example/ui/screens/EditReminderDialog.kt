@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +67,51 @@ fun EditReminderDialog(
     var yearStr by remember { mutableStateOf(dateParts.getOrNull(2) ?: "2026") }
 
     var title by remember { mutableStateOf(reminder?.title ?: "Hora da Água") }
+
+    var wasAutoChanged by remember { mutableStateOf(false) }
+    var autoChangedTimeStr by remember { mutableStateOf("") }
+
+    LaunchedEffect(hourStr, minStr) {
+        val h = (hourStr.toIntOrNull() ?: 8).coerceIn(0, 23)
+        val m = (minStr.toIntOrNull() ?: 0).coerceIn(0, 59)
+        val d = (dayStr.toIntOrNull() ?: 3).coerceIn(1, 31)
+        val mo = (monthStr.toIntOrNull() ?: 8).coerceIn(1, 12)
+        val y = (yearStr.toIntOrNull() ?: 2026).coerceIn(2020, 2100)
+        val formattedDate = String.format(Locale.getDefault(), "%02d/%02d/%04d", d, mo, y)
+
+        if (formattedDate == defaultDateStr) {
+            val calendar = java.util.Calendar.getInstance(spTimeZone)
+            val currentHour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
+            val currentMinute = calendar.get(java.util.Calendar.MINUTE)
+
+            if (h < currentHour || (h == currentHour && m <= currentMinute)) {
+                // Hora no passado para o dia de hoje, avança data para amanhã automaticamente
+                calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                dayStr = String.format(Locale.getDefault(), "%02d", calendar.get(java.util.Calendar.DAY_OF_MONTH))
+                monthStr = String.format(Locale.getDefault(), "%02d", calendar.get(java.util.Calendar.MONTH) + 1)
+                yearStr = String.format(Locale.getDefault(), "%04d", calendar.get(java.util.Calendar.YEAR))
+                autoChangedTimeStr = String.format(Locale.getDefault(), "%02d:%02d", h, m)
+                wasAutoChanged = true
+            } else {
+                wasAutoChanged = false
+            }
+        }
+    }
+
+    LaunchedEffect(dayStr, monthStr, yearStr) {
+        val d = (dayStr.toIntOrNull() ?: 3).coerceIn(1, 31)
+        val mo = (monthStr.toIntOrNull() ?: 8).coerceIn(1, 12)
+        val y = (yearStr.toIntOrNull() ?: 2026).coerceIn(2020, 2100)
+        val formattedDate = String.format(Locale.getDefault(), "%02d/%02d/%04d", d, mo, y)
+
+        val calendar = java.util.Calendar.getInstance(spTimeZone)
+        calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        val tomorrowStr = todayFormatter.format(calendar.time)
+
+        if (formattedDate != tomorrowStr) {
+            wasAutoChanged = false
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -234,6 +280,16 @@ fun EditReminderDialog(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                if (wasAutoChanged) {
+                    Text(
+                        text = "Como $autoChangedTimeStr já passou hoje, o lembrete foi agendado para amanhã.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color(0xFFC62828), // Dark Red for strong contrast
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                }
 
                 OutlinedTextField(
                     value = title,
