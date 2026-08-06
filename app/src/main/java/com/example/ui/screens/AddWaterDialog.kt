@@ -38,7 +38,7 @@ fun AddWaterDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Adicionar Água",
+                text = "Alterar Quantidade",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -46,7 +46,7 @@ fun AddWaterDialog(
         text = {
             Column(modifier = Modifier.padding(vertical = 8.dp)) {
                 Text(
-                    text = "Escolha a quantidade bebida:",
+                    text = "Escolha a nova medida do copo:",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -95,7 +95,7 @@ fun AddWaterDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Adicionar", style = MaterialTheme.typography.labelLarge)
+                Text("Alterar", style = MaterialTheme.typography.labelLarge)
             }
         },
         dismissButton = {

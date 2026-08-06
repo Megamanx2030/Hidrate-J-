@@ -34,7 +34,6 @@ fun SettingsDialog(
 ) {
     var name by remember { mutableStateOf(settings.userName) }
     var dailyGoalLitersStr by remember { mutableStateOf((settings.dailyGoalMl / 1000f).toString()) }
-    var monthlyGoalLitersStr by remember { mutableStateOf(settings.monthlyGoalLiters.toString()) }
     var glassSizeMlStr by remember { mutableStateOf(settings.glassSizeMl.toString()) }
 
     AlertDialog(
@@ -69,16 +68,7 @@ fun SettingsDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                OutlinedTextField(
-                    value = monthlyGoalLitersStr,
-                    onValueChange = { monthlyGoalLitersStr = it },
-                    label = { Text("Meta do Mês (Litros, ex: 60.0)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
 
-                Spacer(modifier = Modifier.height(12.dp))
 
                 OutlinedTextField(
                     value = glassSizeMlStr,
@@ -94,9 +84,8 @@ fun SettingsDialog(
             Button(
                 onClick = {
                     val dailyMl = ((dailyGoalLitersStr.toFloatOrNull() ?: 2.5f) * 1000).toInt()
-                    val monthlyL = monthlyGoalLitersStr.toFloatOrNull() ?: 60.0f
                     val glassMl = glassSizeMlStr.toIntOrNull() ?: 250
-                    onSave(name, dailyMl, monthlyL, glassMl, settings.alertsEnabled, settings.chimeType)
+                    onSave(name, dailyMl, settings.monthlyGoalLiters, glassMl, settings.alertsEnabled, settings.chimeType)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
                 shape = RoundedCornerShape(12.dp)

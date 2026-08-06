@@ -203,7 +203,14 @@ fun HydraApp(viewModel: MainViewModel) {
             AddWaterDialog(
                 onDismiss = { viewModel.closeAddWaterDialog() },
                 onAdd = { amountMl ->
-                    viewModel.addWater(amountMl)
+                    viewModel.saveUserSettings(
+                        name = settings.userName,
+                        dailyGoalMl = settings.dailyGoalMl,
+                        monthlyGoalLiters = settings.monthlyGoalLiters,
+                        glassSizeMl = amountMl,
+                        alertsEnabled = settings.alertsEnabled,
+                        chimeType = settings.chimeType
+                    )
                     viewModel.closeAddWaterDialog()
                 }
             )

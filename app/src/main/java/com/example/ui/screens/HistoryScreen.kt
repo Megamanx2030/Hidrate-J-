@@ -104,37 +104,31 @@ fun HistoryScreen(
         logs.groupBy { it.dateString }
     }
 
-    // Past 7 days data for the chart and list (only includes days that have actual consumption records)
+    // Past 7 days data for the chart and list
     val pastDaysData = remember(logs, dailyGoalMl, selectedMonthIndex, selectedYear) {
-        if (logs.isEmpty()) {
-            emptyList()
+        val list = mutableListOf<Triple<String, String, List<WaterLog>>>() // (formattedDateStr, dateKey, dayLogs)
+        val cal = Calendar.getInstance(spTimeZone)
+        cal.set(Calendar.YEAR, selectedYear)
+        cal.set(Calendar.MONTH, selectedMonthIndex)
+        // Set to current day of month or last day if in past
+        if (selectedMonthIndex == currentLocalDate.monthValue - 1 && selectedYear == currentLocalDate.year) {
+            cal.set(Calendar.DAY_OF_MONTH, currentLocalDate.dayOfMonth)
         } else {
-            val list = mutableListOf<Triple<String, String, List<WaterLog>>>() // (formattedDateStr, dateKey, dayLogs)
-            val cal = Calendar.getInstance(spTimeZone)
-            cal.set(Calendar.YEAR, selectedYear)
-            cal.set(Calendar.MONTH, selectedMonthIndex)
-            // Set to current day of month or last day if in past
-            if (selectedMonthIndex == currentLocalDate.monthValue - 1 && selectedYear == currentLocalDate.year) {
-                cal.set(Calendar.DAY_OF_MONTH, currentLocalDate.dayOfMonth)
-            } else {
-                cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
-            }
-
-            val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }
-            val displayFormat = SimpleDateFormat("EEEE, dd/MM", Locale("pt", "BR")).apply { timeZone = spTimeZone }
-
-            for (i in 0..6) {
-                val key = keyFormat.format(cal.time)
-                val rawLabel = displayFormat.format(cal.time)
-                val label = rawLabel.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
-                val dayLogs = groupedLogs[key] ?: emptyList()
-                if (dayLogs.isNotEmpty()) {
-                    list.add(Triple(label, key, dayLogs))
-                }
-                cal.add(Calendar.DAY_OF_YEAR, -1)
-            }
-            list
+            cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
         }
+
+        val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }
+        val displayFormat = SimpleDateFormat("EEEE, dd/MM", Locale("pt", "BR")).apply { timeZone = spTimeZone }
+
+        for (i in 0..6) {
+            val key = keyFormat.format(cal.time)
+            val rawLabel = displayFormat.format(cal.time)
+            val label = rawLabel.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+            val dayLogs = groupedLogs[key] ?: emptyList()
+            list.add(Triple(label, key, dayLogs))
+            cal.add(Calendar.DAY_OF_YEAR, -1)
+        }
+        list
     }
 
     // Chart fill ratios for past 7 days (oldest to newest)
@@ -142,6 +136,13 @@ fun HistoryScreen(
         pastDaysData.reversed().map { (_, _, dayLogs) ->
             val totalMl = dayLogs.sumOf { it.amountMl }
             (totalMl.toFloat() / dailyGoalMl.toFloat()).coerceIn(0f, 1f)
+        }
+    }
+
+    // Chart day labels (oldest to newest)
+    val chartDays = remember(pastDaysData) {
+        pastDaysData.reversed().map { (dateDisplay, _, _) ->
+            dateDisplay.take(1).uppercase(Locale("pt", "BR"))
         }
     }
 
@@ -281,7 +282,7 @@ fun HistoryScreen(
 
                 // Animated Weekly Water Drop Chart with real calculated ratios
                 com.example.ui.components.AnimatedWaterDropChart(
-                    days = listOf("D", "S", "T", "Q", "Q", "S", "S"),
+                    days = if (chartDays.size == 7) chartDays else listOf("D", "S", "T", "Q", "Q", "S", "S"),
                     fillRatios = if (chartRatios.size == 7) chartRatios else listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -353,8 +354,28 @@ fun HistoryScreen(
                 )
             }
         } else {
-            pastDaysData.forEach { (dateDisplay, _, dayLogs) ->
-                val totalMl = dayLogs.sumOf { it.amountMl }
+            // Only show days with actual logs in the list, unless you want to see empty days
+            val recentDaysWithLogs = pastDaysData.filter { it.third.isNotEmpty() }
+            
+            if (recentDaysWithLogs.isEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "Nenhum registro recente de consumo de água.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            } else {
+                recentDaysWithLogs.forEach { (dateDisplay, _, dayLogs) ->
+                    val totalMl = dayLogs.sumOf { it.amountMl }
                 val goalReached = totalMl >= dailyGoalMl
                 val litersStr = String.format(Locale("pt", "BR"), "%.1f Litros", totalMl / 1000f)
 
@@ -471,6 +492,7 @@ fun HistoryScreen(
                         }
                     }
                 }
+            }
             }
         }
 
