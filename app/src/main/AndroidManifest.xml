@@ -9,6 +9,16 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- NOVO: necessario para tocar o alarme por 10s com o app fechado.
+         SHORT_SERVICE e o tipo desenhado para trabalho curto e critico
+         que nao pode ser adiado (ate ~3 min). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE" />
+
+    <!-- NOVO: permite pedir isencao da otimizacao de bateria.
+         ATENCAO: a Play Store exige justificativa para esta permissao.
+         Se for publicar, veja a observacao no README. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
@@ -20,32 +30,40 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
+
+        <!-- MUDOU: launchMode singleTask garante que o intent do alarme chegue
+             na Activity existente (onNewIntent) em vez de recriar do zero.
+             showWhenLocked/turnScreenOn precisam estar AQUI, nao so no onCreate:
+             o sistema le isso antes de criar a Activity. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:showOnLockScreen="true"
-            android:turnScreenOn="true"
-            android:showForAllUsers="true"
             android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:theme="@style/Theme.MyApplication">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Water Reminder Alarm Receiver -->
+        <!-- NOVO: servico em primeiro plano que toca o som/vibracao.
+             Sem isso o processo morre no meio dos 10 segundos. -->
+        <service
+            android:name=".alarm.WaterAlarmService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+
         <receiver
             android:name=".alarm.WaterReminderReceiver"
             android:exported="false" />
 
-        <!-- Notification Action Receiver (Confirm/Ignore buttons) -->
         <receiver
             android:name=".alarm.NotificationActionReceiver"
             android:exported="false" />
 
-        <!-- Boot Complete Receiver (reschedule alarms after reboot) -->
         <receiver
             android:name=".alarm.BootCompleteReceiver"
             android:exported="true">

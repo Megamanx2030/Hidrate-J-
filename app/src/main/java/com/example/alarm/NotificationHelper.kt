@@ -1,5 +1,6 @@
 package com.example.alarm
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -12,7 +13,11 @@ import com.example.MainActivity
 class NotificationHelper(private val context: Context) {
 
     companion object {
-        const val CHANNEL_ID = "hydra_water_alarm_channel_v2"
+        // MUDOU de _v2 para _v3 DE PROPOSITO.
+        // Um NotificationChannel e imutavel depois de criado: alterar
+        // importancia, som ou vibracao em um canal existente nao tem efeito
+        // nenhum. A unica forma de aplicar mudancas e criar um ID novo.
+        const val CHANNEL_ID = "hydra_water_alarm_channel_v3"
         const val CHANNEL_NAME = "Lembretes de Água (Alarme)"
         const val CHANNEL_DESC = "Notificações para lembrar de beber água"
     }
@@ -29,11 +34,15 @@ class NotificationHelper(private val context: Context) {
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = CHANNEL_DESC
-                // Disable system sound and vibration on the channel so our custom SoundManager can handle it
-                // IMPORTANT: We must still keep IMPORTANCE_HIGH so the FullScreenIntent can wake the screen
+                // Som e vibracao do sistema desligados: quem toca e o
+                // SoundAndVibrationManager dentro do WaterAlarmService.
+                // IMPORTANCE_HIGH continua obrigatorio, senao o
+                // setFullScreenIntent e ignorado.
                 setSound(null, null)
                 enableVibration(false)
                 setShowBadge(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
             }
             val notificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -41,21 +50,24 @@ class NotificationHelper(private val context: Context) {
         }
     }
 
-    fun showWaterReminderNotification(
+    /**
+     * Monta a notificacao sem exibir. O WaterAlarmService precisa do objeto
+     * Notification para passar ao startForeground().
+     */
+    fun buildWaterReminderNotification(
         reminderId: Int,
         title: String,
         time: String,
-        chimeType: String,
-        vibrateOnly: Boolean = false
-    ) {
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        chimeType: String
+    ): Notification {
 
-        // Intent to open the app when notification is tapped
+        // Intent que abre a tela azul. O extra show_alert e lido pela
+        // MainActivity para mandar o ViewModel exibir o overlay.
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("reminder_id", reminderId)
             putExtra("from_notification", true)
+            putExtra("show_alert", true)
         }
         val openAppPendingIntent = PendingIntent.getActivity(
             context,
@@ -64,7 +76,6 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action: "Bebi Água ✓"
         val confirmIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = "ACTION_CONFIRM_WATER"
             putExtra("reminder_id", reminderId)
@@ -79,7 +90,6 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action: "Ignorar"
         val ignoreIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = "ACTION_IGNORE_WATER"
             putExtra("reminder_id", reminderId)
@@ -94,32 +104,40 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle("💧 $title")
-            .setContentText("Hora de beber água! São $time - Toque para abrir o app.")
+            .setContentText("Hora de beber água! São $time")
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("🚰 Está na hora de beber água!\n⏰ Horário: $time\n\nSe você não estava presente quando o alarme tocou, beba agora e confirme abaixo. Manter-se hidratado é essencial para sua saúde!")
+                    .bigText("🚰 Está na hora de beber água!\n⏰ Horário: $time\n\nBeba agora e confirme abaixo.")
             )
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            // MUDOU de CATEGORY_REMINDER para CATEGORY_ALARM.
+            // O Android da tratamento privilegiado a CATEGORY_ALARM em
+            // tela de bloqueio, Nao Perturbe e full screen intent.
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)
             .setFullScreenIntent(openAppPendingIntent, true)
-            .addAction(
-                android.R.drawable.ic_input_add,
-                "✅ Bebi Água",
-                confirmPendingIntent
-            )
-            .addAction(
-                android.R.drawable.ic_delete,
-                "❌ Ignorar",
-                ignorePendingIntent
-            )
+            .addAction(android.R.drawable.ic_input_add, "✅ Bebi Água", confirmPendingIntent)
+            .addAction(android.R.drawable.ic_delete, "❌ Ignorar", ignorePendingIntent)
             .build()
+    }
 
-        notificationManager.notify(reminderId, notification)
+    fun showWaterReminderNotification(
+        reminderId: Int,
+        title: String,
+        time: String,
+        chimeType: String
+    ) {
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(
+            reminderId,
+            buildWaterReminderNotification(reminderId, title, time, chimeType)
+        )
     }
 
     fun cancelNotification(reminderId: Int) {

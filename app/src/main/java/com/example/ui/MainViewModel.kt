@@ -98,53 +98,80 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             repository.initDefaultDataIfNeeded()
-            
-            // Check for missed reminders that were pending and their time has passed
-            val spZone = java.time.ZoneId.of("America/Sao_Paulo")
-            val nowSp = java.time.LocalTime.now(spZone)
-            val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
-            val dateStr = repository.getTodayDisplayDateString()
-            
-            val remindersList = db.reminderDao().getAllRemindersOnce()
-            remindersList.forEach { reminder ->
-                if (!reminder.isCompleted && !reminder.isSkipped && reminder.time < currentHHmm) {
-                    repository.updateReminder(
-                        reminder.copy(
-                            isSkipped = true,
-                            skippedDate = dateStr,
-                            skippedTime = reminder.time
-                        )
-                    )
-                }
-            }
-            
-            // Schedule alarms for all existing reminders
+
+            // ORDEM IMPORTA: o reset diario tem que rodar ANTES da varredura
+            // de "esquecidos", senao os lembretes de ontem sao marcados como
+            // esquecidos hoje.
+            resetDailyStatusIfNewDay()
+
+            markMissedRemindersAsSkipped()
+
             scheduleAllReminders()
         }
 
         // Create notification channel early
         NotificationHelper(application)
 
-        // Automatic reminder background checker synchronized with São Paulo timezone
-        // This only triggers the overlay when app is open; AlarmManager/Receiver handles sound/vibration
+        // Verificador em primeiro plano: so abre o overlay com o app aberto.
+        // Som e vibracao sao do AlarmManager + WaterAlarmService.
         viewModelScope.launch {
             var lastTriggeredMinute: String? = null
             val spZone = java.time.ZoneId.of("America/Sao_Paulo")
             while (true) {
-                delay(3000) // check every 3 seconds
+                delay(3000)
                 if (!_isAlertVisible.value) {
                     val nowSp = java.time.LocalTime.now(spZone)
                     val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
 
                     if (currentHHmm != lastTriggeredMinute) {
-                        val matchingReminder = allReminders.value.find { it.time == currentHHmm && !it.isCompleted }
+                        val matchingReminder = allReminders.value
+                            .find { it.time == currentHHmm && !it.isCompleted }
                         if (matchingReminder != null) {
                             lastTriggeredMinute = currentHHmm
-                            // Only show overlay, don't play media (Receiver handles sound/vibration)
                             triggerWaterAlert(matchingReminder.id, playMedia = false)
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * CORRECAO PRINCIPAL: virada de dia.
+     *
+     * O status bebido/esquecido e DIARIO, mas estava gravado como flag
+     * permanente no Reminder. Sem este reset, no segundo dia de uso:
+     *   - a tela mostrava "Bebido as 06:04" de ontem
+     *   - o verificador nunca mais abria o overlay (filtra !isCompleted)
+     *   - o scheduleAllReminders pulava os concluidos
+     */
+    private suspend fun resetDailyStatusIfNewDay() {
+        val hoje = repository.getTodayDisplayDateString()
+        val ultimoReset = db.userSettingsDao().getSettingsOnce()?.lastResetDate ?: ""
+
+        if (ultimoReset == hoje) return
+
+        db.reminderDao().resetAllReminderStatus()
+        val atual = db.userSettingsDao().getSettingsOnce() ?: UserSettings()
+        repository.updateSettings(atual.copy(lastResetDate = hoje))
+    }
+
+    /** Marca como esquecido o que ja passou da hora e nao foi confirmado hoje. */
+    private suspend fun markMissedRemindersAsSkipped() {
+        val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+        val nowSp = java.time.LocalTime.now(spZone)
+        val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
+        val dateStr = repository.getTodayDisplayDateString()
+
+        db.reminderDao().getAllRemindersOnce().forEach { reminder ->
+            if (!reminder.isCompleted && !reminder.isSkipped && reminder.time < currentHHmm) {
+                repository.updateReminder(
+                    reminder.copy(
+                        isSkipped = true,
+                        skippedDate = dateStr,
+                        skippedTime = reminder.time
+                    )
+                )
             }
         }
     }
@@ -208,6 +235,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearEverything() {
         viewModelScope.launch {
+            // CORRIGIDO: antes os lembretes eram apagados mas os alarmes
+            // continuavam agendados. Resultado: alarme orfao disparando
+            // para lembrete que nao existe mais.
+            alarmScheduler.cancelAll(db.reminderDao().getAllRemindersOnce())
             repository.clearEverything()
         }
     }
@@ -383,16 +414,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addReminder(time: String, date: String, title: String) {
         viewModelScope.launch {
             repository.addReminder(Reminder(time = time, date = date, title = title))
-            // Need to get the ID of the newly added reminder, so fetch all and find matching
-            delay(200) // Wait for Room to process
-            val reminders = db.reminderDao().getAllRemindersOnce()
-            val newReminder = reminders.findLast { it.time == time && it.title == title }
-            if (newReminder != null) {
+
+            // CORRIGIDO: o delay(200) era corrida desnecessaria -- o insert
+            // suspenso do Room ja commitou quando retorna. E findLast pegava
+            // conforme a ordenacao por hora, nem sempre o recem-criado.
+            val novo = db.reminderDao().getAllRemindersOnce()
+                .filter { it.time == time && it.title == title }
+                .maxByOrNull { it.id }
+
+            if (novo != null) {
                 alarmScheduler.scheduleReminder(
-                    reminderId = newReminder.id,
-                    time = newReminder.time,
+                    reminderId = novo.id,
+                    time = novo.time,
                     chimeType = userSettings.value.chimeType,
-                    title = newReminder.title
+                    title = novo.title
                 )
             }
         }

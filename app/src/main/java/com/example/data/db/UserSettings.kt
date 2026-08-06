@@ -17,5 +17,9 @@ data class UserSettings(
     val vibrateOnly: Boolean = false,
     val ringtoneDurationSeconds: Int = 10,
     val chimeType: String = "Sino Suave",
-    val hasSeededDefaults: Boolean = false
+    val hasSeededDefaults: Boolean = false,
+    // Data (dd/MM/yyyy) do ultimo reset diario dos lembretes.
+    // Sem isso, isCompleted fica true para sempre e o lembrete
+    // nunca volta para "Pendente" no dia seguinte.
+    val lastResetDate: String = ""
 )
