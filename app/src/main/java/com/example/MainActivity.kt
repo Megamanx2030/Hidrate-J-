@@ -81,9 +81,14 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: android.content.Intent?) {
         if (intent?.getBooleanExtra("from_notification", false) == true) {
             val reminderId = intent.getIntExtra("reminder_id", -1)
-            intent.removeExtra("from_notification")
-            intent.removeExtra("reminder_id")
-            if (reminderId != -1 && !viewModel.isAlertVisible.value) {
+            val alertTimestamp = intent.getLongExtra("alert_timestamp", 0L)
+            
+            intent.replaceExtras(android.os.Bundle())
+            setIntent(intent)
+            
+            val isTooOld = System.currentTimeMillis() - alertTimestamp > 2 * 60 * 1000
+            
+            if (reminderId != -1 && !isTooOld && !viewModel.isAlertVisible.value) {
                 // O WaterAlarmService ja esta tocando o som, entao aqui
                 // so exibimos a tela azul.
                 viewModel.triggerWaterAlert(reminderId, playMedia = false)

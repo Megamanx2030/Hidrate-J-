@@ -68,6 +68,7 @@ class NotificationHelper(private val context: Context) {
             putExtra("reminder_id", reminderId)
             putExtra("from_notification", true)
             putExtra("show_alert", true)
+            putExtra("alert_timestamp", System.currentTimeMillis())
         }
         val openAppPendingIntent = PendingIntent.getActivity(
             context,
@@ -104,6 +105,17 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val dismissIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = "ACTION_DISMISS_WATER"
+            putExtra("reminder_id", reminderId)
+        }
+        val dismissPendingIntent = PendingIntent.getBroadcast(
+            context,
+            reminderId * 100 + 3,
+            dismissIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle("💧 $title")
@@ -121,6 +133,7 @@ class NotificationHelper(private val context: Context) {
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)
             .setFullScreenIntent(openAppPendingIntent, true)
+            .setDeleteIntent(dismissPendingIntent)
             .addAction(android.R.drawable.ic_input_add, "✅ Bebi Água", confirmPendingIntent)
             .addAction(android.R.drawable.ic_delete, "❌ Ignorar", ignorePendingIntent)
             .build()

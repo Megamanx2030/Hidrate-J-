@@ -125,7 +125,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     if (currentHHmm != lastTriggeredMinute) {
                         val matchingReminder = allReminders.value
-                            .find { it.time == currentHHmm && !it.isCompleted }
+                            .find { it.time == currentHHmm && !it.isCompleted && !it.isSkipped }
                         if (matchingReminder != null) {
                             lastTriggeredMinute = currentHHmm
                             triggerWaterAlert(matchingReminder.id, playMedia = false)
@@ -243,7 +243,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var lastDismissedReminderId: Int? = null
+    private var lastDismissedTimestamp: Long = 0L
+
     fun triggerWaterAlert(reminderId: Int? = null, playMedia: Boolean = true) {
+        if (reminderId != null) {
+            val reminder = allReminders.value.find { it.id == reminderId }
+            if (reminder != null && (reminder.isCompleted || reminder.isSkipped)) {
+                return
+            }
+            if (reminderId == lastDismissedReminderId && (System.currentTimeMillis() - lastDismissedTimestamp < 2 * 60 * 1000)) {
+                return
+            }
+        }
+
         activeReminderId = reminderId
         _isAlertVisible.value = true
         _countdownSeconds.value = userSettings.value.ringtoneDurationSeconds
@@ -282,6 +295,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun confirmWaterAlert() {
+        if (activeReminderId != null) {
+            lastDismissedReminderId = activeReminderId
+            lastDismissedTimestamp = System.currentTimeMillis()
+        }
+        com.example.alarm.WaterAlarmService.stop(getApplication())
+        val idToCancel = activeReminderId
+        if (idToCancel != null) {
+            com.example.alarm.NotificationHelper(getApplication()).cancelNotification(idToCancel)
+        }
         soundAndVibrationManager.stopAlert()
         countdownJob?.cancel()
         _isAlertVisible.value = false
@@ -319,6 +341,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopWaterAlert() {
+        if (activeReminderId != null) {
+            lastDismissedReminderId = activeReminderId
+            lastDismissedTimestamp = System.currentTimeMillis()
+        }
+        com.example.alarm.WaterAlarmService.stop(getApplication())
+        val idToCancel = activeReminderId
+        if (idToCancel != null) {
+            com.example.alarm.NotificationHelper(getApplication()).cancelNotification(idToCancel)
+        }
         soundAndVibrationManager.stopAlert()
         countdownJob?.cancel()
         _isAlertVisible.value = false

@@ -17,6 +17,8 @@ import java.util.TimeZone
 class NotificationActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        com.example.alarm.WaterAlarmService.stop(context)
+
         val reminderId = intent.getIntExtra("reminder_id", -1)
         val time = intent.getStringExtra("time") ?: ""
         val chimeType = intent.getStringExtra("chime_type") ?: "Sino Suave"
@@ -28,6 +30,10 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val spTimeZone = TimeZone.getTimeZone("America/Sao_Paulo")
 
         when (intent.action) {
+            "ACTION_DISMISS_WATER" -> {
+                // Already stopped the service above, nothing else to do.
+                return
+            }
             "ACTION_CONFIRM_WATER" -> {
                 CoroutineScope(Dispatchers.IO).launch {
                     // Get current settings for glass size

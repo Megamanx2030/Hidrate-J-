@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 class WaterAlarmService : Service() {
 
     companion object {
+        const val ACTION_STOP_ALARM = "com.example.alarm.ACTION_STOP_ALARM"
         const val EXTRA_REMINDER_ID = "reminder_id"
         const val EXTRA_CHIME_TYPE = "chime_type"
         const val EXTRA_TITLE = "title"
@@ -42,16 +43,33 @@ class WaterAlarmService : Service() {
 
         private const val ALARM_DURATION_SECONDS = 10
         private const val WAKELOCK_TIMEOUT_MS = 20_000L
+
+        fun stop(context: android.content.Context) {
+            val intent = Intent(context, WaterAlarmService::class.java).apply {
+                action = ACTION_STOP_ALARM
+            }
+            try {
+                context.startService(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var soundManager: SoundAndVibrationManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var alreadyStopping = false
+    private var isForegroundStarted = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_ALARM) {
+            finishAlarm()
+            return START_NOT_STICKY
+        }
+
         val reminderId = intent?.getIntExtra(EXTRA_REMINDER_ID, -1) ?: -1
         if (reminderId == -1) {
             stopSelf()
@@ -83,6 +101,7 @@ class WaterAlarmService : Service() {
         } else {
             startForeground(reminderId, notification)
         }
+        isForegroundStarted = true
 
         acquireWakeLock()
 
@@ -132,7 +151,9 @@ class WaterAlarmService : Service() {
         soundManager?.stopAlert()
         soundManager = null
 
-        stopForeground(STOP_FOREGROUND_DETACH)
+        if (isForegroundStarted) {
+            stopForeground(STOP_FOREGROUND_DETACH)
+        }
         stopSelf()
     }
 
