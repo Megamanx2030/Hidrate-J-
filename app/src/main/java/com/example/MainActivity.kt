@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.example.alarm.AlarmPermissionHelper
 import com.example.ui.HydraApp
 import com.example.ui.MainViewModel
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.ui.theme.HydraCompanionTheme
 
 class MainActivity : ComponentActivity() {
@@ -30,7 +31,12 @@ class MainActivity : ComponentActivity() {
     ) { /* resultado tratado no onResume */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        
+        var prontoParaMostrar = false
+        window.decorView.postDelayed({ prontoParaMostrar = true }, 1500)
+        splashScreen.setKeepOnScreenCondition { !prontoParaMostrar }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
