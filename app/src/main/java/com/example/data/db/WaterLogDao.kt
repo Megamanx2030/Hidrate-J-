@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface WaterLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertLog(log: WaterLog)
+    suspend fun insertLog(log: WaterLog): Long
 
     @Query("SELECT * FROM water_logs ORDER BY timestamp DESC")
     fun getAllLogs(): Flow<List<WaterLog>>

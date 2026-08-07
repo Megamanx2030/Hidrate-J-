@@ -145,15 +145,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      *   - o verificador nunca mais abria o overlay (filtra !isCompleted)
      *   - o scheduleAllReminders pulava os concluidos
      */
+    private fun getNextOccurrenceDateString(time: String): String {
+        val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+        val now = java.time.ZonedDateTime.now(spZone)
+        val timeParts = time.split(":")
+        val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 0
+        val minute = timeParts.getOrNull(1)?.toIntOrNull() ?: 0
+        
+        var target = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
+        
+        if (target.isBefore(now) || target.isEqual(now)) {
+            target = target.plusDays(1)
+        }
+        
+        return java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(target)
+    }
+
     private suspend fun resetDailyStatusIfNewDay() {
         val hoje = repository.getTodayDisplayDateString()
         val ultimoReset = db.userSettingsDao().getSettingsOnce()?.lastResetDate ?: ""
 
-        if (ultimoReset == hoje) return
-
-        db.reminderDao().resetAllReminderStatus()
-        val atual = db.userSettingsDao().getSettingsOnce() ?: UserSettings()
-        repository.updateSettings(atual.copy(lastResetDate = hoje))
+        if (ultimoReset != hoje) {
+            db.reminderDao().getAllRemindersOnce().forEach { reminder ->
+                repository.updateReminder(
+                    reminder.copy(
+                        isCompleted = false,
+                        completedTime = "",
+                        isSkipped = false,
+                        skippedDate = "",
+                        skippedTime = "",
+                        waterLogId = 0,
+                        date = getNextOccurrenceDateString(reminder.time)
+                    )
+                )
+            }
+            val atual = db.userSettingsDao().getSettingsOnce() ?: UserSettings()
+            repository.updateSettings(atual.copy(lastResetDate = hoje))
+        } else {
+            db.reminderDao().getAllRemindersOnce().forEach { reminder ->
+                val nextDate = getNextOccurrenceDateString(reminder.time)
+                if (reminder.date != nextDate) {
+                    repository.updateReminder(reminder.copy(date = nextDate))
+                }
+            }
+        }
     }
 
     /** Marca como esquecido o que ja passou da hora e nao foi confirmado hoje. */
@@ -169,7 +204,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     reminder.copy(
                         isSkipped = true,
                         skippedDate = dateStr,
-                        skippedTime = reminder.time
+                        skippedTime = reminder.time,
+                        date = getNextOccurrenceDateString(reminder.time)
                     )
                 )
             }
@@ -307,14 +343,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         soundAndVibrationManager.stopAlert()
         countdownJob?.cancel()
         _isAlertVisible.value = false
-        // Add 1 glass of water on confirmation
-        addWater(userSettings.value.glassSizeMl)
 
         val remId = activeReminderId
         if (remId != null) {
             viewModelScope.launch {
-                val reminder = allReminders.value.find { it.id == remId }
-                if (reminder != null) {
+                val reminder = db.reminderDao().getAllRemindersOnce().find { it.id == remId }
+                if (reminder != null && !reminder.isCompleted) {
+                    val logId = repository.addWaterLog(userSettings.value.glassSizeMl)
+
                     val spZone = java.time.ZoneId.of("America/Sao_Paulo")
                     val nowSp = java.time.LocalTime.now(spZone)
                     val currentTimeStr = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
@@ -324,7 +360,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             completedTime = currentTimeStr,
                             isSkipped = false,
                             skippedDate = "",
-                            skippedTime = ""
+                            skippedTime = "",
+                            waterLogId = logId.toInt()
                         )
                     )
                     // Reschedule for tomorrow
@@ -367,7 +404,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         reminder.copy(
                             isSkipped = true,
                             skippedDate = dateStr,
-                            skippedTime = timeStr
+                            skippedTime = timeStr,
+                            date = getNextOccurrenceDateString(reminder.time)
                         )
                     )
                     // Reschedule for tomorrow
@@ -385,33 +423,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleReminderCompleted(reminder: Reminder) {
         viewModelScope.launch {
-            if (!reminder.isCompleted) {
+            val currentReminder = db.reminderDao().getAllRemindersOnce().find { it.id == reminder.id } ?: return@launch
+            if (!currentReminder.isCompleted) {
+                val logId = repository.addWaterLog(userSettings.value.glassSizeMl)
                 val spZone = java.time.ZoneId.of("America/Sao_Paulo")
                 val nowSp = java.time.LocalTime.now(spZone)
                 val timeStr = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
                 repository.updateReminder(
-                    reminder.copy(
+                    currentReminder.copy(
                         isCompleted = true,
                         completedTime = timeStr,
                         isSkipped = false,
-                        skippedDate = "",
-                        skippedTime = ""
+                        waterLogId = logId.toInt(),
+                        date = getNextOccurrenceDateString(currentReminder.time)
                     )
                 )
-                repository.addWaterLog(userSettings.value.glassSizeMl)
             } else {
+                if (currentReminder.waterLogId != 0) {
+                    db.waterLogDao().deleteLogById(currentReminder.waterLogId)
+                }
                 repository.updateReminder(
-                    reminder.copy(
+                    currentReminder.copy(
                         isCompleted = false,
-                        completedTime = ""
+                        completedTime = "",
+                        waterLogId = 0,
+                        date = getNextOccurrenceDateString(currentReminder.time)
                     )
                 )
                 // Reschedule alarm since it's back to pending
                 alarmScheduler.scheduleReminder(
-                    reminderId = reminder.id,
-                    time = reminder.time,
+                    reminderId = currentReminder.id,
+                    time = currentReminder.time,
                     chimeType = userSettings.value.chimeType,
-                    title = reminder.title
+                    title = currentReminder.title
                 )
             }
         }

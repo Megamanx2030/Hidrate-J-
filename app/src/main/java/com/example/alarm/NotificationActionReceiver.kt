@@ -36,25 +36,25 @@ class NotificationActionReceiver : BroadcastReceiver() {
             }
             "ACTION_CONFIRM_WATER" -> {
                 CoroutineScope(Dispatchers.IO).launch {
-                    // Get current settings for glass size
-                    val settings = db.userSettingsDao().getSettingsOnce()
-                    val glassSizeMl = settings?.glassSizeMl ?: 250
-
-                    // Add water log
-                    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
-                        timeZone = spTimeZone
-                    }
-                    val waterLog = WaterLog(
-                        amountMl = glassSizeMl,
-                        timestamp = System.currentTimeMillis(),
-                        dateString = dateFormat.format(Date())
-                    )
-                    db.waterLogDao().insertLog(waterLog)
-
-                    // Mark reminder as completed
                     val reminders = db.reminderDao().getAllRemindersOnce()
                     val reminder = reminders.find { it.id == reminderId }
-                    if (reminder != null) {
+                    if (reminder != null && !reminder.isCompleted) {
+                        // Get current settings for glass size
+                        val settings = db.userSettingsDao().getSettingsOnce()
+                        val glassSizeMl = settings?.glassSizeMl ?: 250
+
+                        // Add water log
+                        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
+                            timeZone = spTimeZone
+                        }
+                        val waterLog = WaterLog(
+                            amountMl = glassSizeMl,
+                            timestamp = System.currentTimeMillis(),
+                            dateString = dateFormat.format(Date())
+                        )
+                        val logId = db.waterLogDao().insertLog(waterLog)
+
+                        // Mark reminder as completed
                         val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
                             timeZone = spTimeZone
                         }
@@ -65,7 +65,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                 completedTime = currentTimeStr,
                                 isSkipped = false,
                                 skippedDate = "",
-                                skippedTime = ""
+                                skippedTime = "",
+                                waterLogId = logId.toInt()
                             )
                         )
                     }

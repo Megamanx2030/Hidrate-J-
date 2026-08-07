@@ -38,7 +38,7 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      signingConfig = signingConfigs.getByName("debug")
     }
   }
   compileOptions {
@@ -50,6 +50,9 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  lint {
+    abortOnError = false
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files

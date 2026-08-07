@@ -77,14 +77,14 @@ class WaterRepository(
         reminderDao.deleteAllReminders()
     }
 
-    suspend fun addWaterLog(amountMl: Int) {
-        if (amountMl <= 0) return
+    suspend fun addWaterLog(amountMl: Int): Long {
+        if (amountMl <= 0) return 0L
         val log = WaterLog(
             amountMl = amountMl,
             timestamp = System.currentTimeMillis(),
             dateString = getTodayDateString()
         )
-        waterLogDao.insertLog(log)
+        return waterLogDao.insertLog(log)
     }
 
     suspend fun updateSettings(settings: UserSettings) {

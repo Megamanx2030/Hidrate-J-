@@ -117,16 +117,18 @@ fun HistoryScreen(
             cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
         }
 
-        // Align to Sunday
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+        // Align to Monday
+        cal.firstDayOfWeek = Calendar.MONDAY
+        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
 
         val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }
-        val displayFormat = SimpleDateFormat("EEE, dd/MM", Locale("pt", "BR")).apply { timeZone = spTimeZone }
+        val dateFormat = SimpleDateFormat("dd/MM", Locale.getDefault()).apply { timeZone = spTimeZone }
+        val dayNames = arrayOf("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb")
 
         for (i in 0..6) {
             val key = keyFormat.format(cal.time)
-            val rawLabel = displayFormat.format(cal.time)
-            val label = rawLabel.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+            val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+            val label = "${dayNames[dayOfWeek - 1]}, ${dateFormat.format(cal.time)}"
             val dayLogs = groupedLogs[key] ?: emptyList()
             list.add(Triple(label, key, dayLogs))
             cal.add(Calendar.DAY_OF_YEAR, 1)
@@ -145,7 +147,7 @@ fun HistoryScreen(
     // Chart day labels (oldest to newest)
     val chartDays = remember(pastDaysData) {
         pastDaysData.map { (dateDisplay, _, _) ->
-            dateDisplay.take(3).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+            dateDisplay.take(3)
         }
     }
 
@@ -160,8 +162,19 @@ fun HistoryScreen(
     }
 
     // Skipped Reminders
-    val skippedReminders = remember(reminders) {
-        reminders.filter { it.isSkipped }
+    val skippedReminders = remember(reminders, selectedMonthIndex, selectedYear) {
+        reminders.filter { reminder ->
+            if (reminder.skippedDate.isBlank()) false
+            else {
+                // skippedDate is "dd/MM/yyyy"
+                val parts = reminder.skippedDate.split("/")
+                if (parts.size == 3) {
+                    val m = parts[1].toIntOrNull() ?: -1
+                    val y = parts[2].toIntOrNull() ?: -1
+                    (m - 1) == selectedMonthIndex && y == selectedYear
+                } else false
+            }
+        }
     }
 
     Column(
@@ -289,7 +302,7 @@ fun HistoryScreen(
                 // Animated Weekly Water Drop Chart with real calculated ratios
                 val todayDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply { timeZone = spTimeZone }.format(java.util.Date())
                 com.example.ui.components.AnimatedWaterDropChart(
-                    days = if (chartDays.size == 7) chartDays else listOf("D", "S", "T", "Q", "Q", "S", "S"),
+                    days = if (chartDays.size == 7) chartDays else listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"),
                     fillRatios = if (chartRatios.size == 7) chartRatios else listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
                     dates = pastDaysData.map { it.second },
                     totalsMl = pastDaysData.map { it.third.sumOf { l -> l.amountMl } },
@@ -517,10 +530,16 @@ fun HistoryScreen(
 
         // Skipped Reminders Section
         Text(
-            text = "Lembretes Ignorados / Esquecidos",
+            text = "Lembretes Esquecidos",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 2.dp)
+        )
+        Text(
+            text = "Mostrando o último registro de cada horário.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 10.dp)
         )
 
@@ -533,7 +552,7 @@ fun HistoryScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    text = "Nenhum lembrete ignorado recente!",
+                    text = "Você não esqueceu nenhum lembrete. Parabéns!",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp)
@@ -543,6 +562,18 @@ fun HistoryScreen(
             skippedReminders.forEach { reminder ->
                 val dateText = reminder.skippedDate.ifBlank { reminder.date.ifBlank { "Hoje" } }
                 val timeText = reminder.skippedTime.ifBlank { reminder.time }
+                val isRecovered = reminder.isCompleted && !reminder.isSkipped
+                
+                val iconBoxColor = if (isRecovered) SecondaryContainer else ErrorContainer
+                val iconTintColor = if (isRecovered) PrimaryBlue else ErrorRed
+                val iconVector = if (isRecovered) Icons.Default.CheckCircle else Icons.Default.Close
+                val descColor = if (isRecovered) PrimaryBlue else ErrorRed
+                
+                val descText = if (isRecovered) {
+                    "Esqueceu às $timeText, mas bebeu depois às ${reminder.completedTime}"
+                } else {
+                    "Esqueceu de beber em: $dateText às $timeText"
+                }
 
                 Card(
                     modifier = Modifier
@@ -561,13 +592,13 @@ fun HistoryScreen(
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .background(ErrorContainer, CircleShape),
+                                .background(iconBoxColor, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = iconVector,
                                 contentDescription = null,
-                                tint = ErrorRed,
+                                tint = iconTintColor,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -584,9 +615,9 @@ fun HistoryScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "Esqueceu de beber em: $dateText às $timeText",
+                                text = descText,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = ErrorRed,
+                                color = descColor,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis

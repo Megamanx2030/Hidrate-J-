@@ -13,5 +13,6 @@ data class Reminder(
     val completedTime: String = "",
     val isSkipped: Boolean = false,
     val skippedDate: String = "", // e.g., "Segunda-feira, 03/08/2026"
-    val skippedTime: String = "" // e.g., "17:45"
+    val skippedTime: String = "", // e.g., "17:45"
+    val waterLogId: Int = 0
 )

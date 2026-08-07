@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -37,9 +40,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,7 +54,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -185,14 +195,14 @@ fun RemindersScreen(
                             onCheckedChange = onToggleVibrateOnly,
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
-                                checkedTrackColor = com.example.ui.theme.CyanAction
+                                checkedTrackColor = PrimaryBlue
                             )
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (settings.vibrateOnly) "Ligado" else "Desl.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (settings.vibrateOnly) com.example.ui.theme.CyanAction else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (settings.vibrateOnly) PrimaryBlue else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -224,12 +234,17 @@ fun RemindersScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Test button
-                Button(
+                OutlinedButton(
                     onClick = onTestAlert,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .testTag("test_alert_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.CyanAction),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.White,
+                        contentColor = PrimaryBlue
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(2.dp, PrimaryBlue),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Row(
@@ -365,7 +380,13 @@ fun RemindersScreen(
                     isNewReminder = true
                     showEditDialog = true
                 },
-                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = PrimaryBlue
+                ),
+                border = androidx.compose.foundation.BorderStroke(2.dp, Color.Black),
+                shape = RoundedCornerShape(12.dp),
                 contentPadding = ButtonDefaults.ContentPadding
             ) {
                 Icon(
@@ -390,22 +411,67 @@ fun RemindersScreen(
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                if (reminders.isNotEmpty()) {
+                    val inlineId = "checkIcon"
+                    val text = buildAnnotatedString {
+                        append("Esqueceu de marcar? Toque no ")
+                        appendInlineContent(inlineId, "[icon]")
+                        append(" para registrar que bebeu.")
+                    }
+                    val inlineContent = mapOf(
+                        Pair(
+                            inlineId,
+                            InlineTextContent(
+                                Placeholder(
+                                    width = 20.sp,
+                                    height = 20.sp,
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
+                                )
+                            ) {
+                                Icon(Icons.Default.CheckCircle, "", tint = PrimaryBlue)
+                            }
+                        )
+                    )
+                    Text(
+                        text = text,
+                        inlineContent = inlineContent,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+
                 reminders.forEachIndexed { index, reminder ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f)
                         ) {
+                            val timeParts = reminder.time.split(":")
+                            val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 0
+                            val isDay = hour in 6..17
+                            val timeIcon = if (isDay) Icons.Default.WbSunny else Icons.Default.ModeNight
+                            val timeIconColor = if (isDay) Color(0xFFFFC107) else Color(0xFF90CAF9)
+                            val timeDesc = if (isDay) "Horário da manhã" else "Horário da noite"
+                            
+                            Icon(
+                                imageVector = timeIcon,
+                                contentDescription = timeDesc,
+                                tint = timeIconColor,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+
                             // Time badge: solid blue when completed, bordered when pending
                             Box(
                                 modifier = Modifier
-                                    .widthIn(min = 68.dp)
+                                    .widthIn(min = 76.dp)
                                     .height(36.dp)
                                     .then(
                                         if (reminder.isCompleted) {
@@ -431,14 +497,13 @@ fun RemindersScreen(
 
                             Spacer(modifier = Modifier.width(10.dp))
 
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column {
                                 Text(
                                     text = reminder.title,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    maxLines = 2
                                 )
 
                                 val statusText = when {
@@ -475,64 +540,39 @@ fun RemindersScreen(
                                     )
                                 }
                             }
-                            
-                            Spacer(modifier = Modifier.width(8.dp))
-                            
-                            val timeParts = reminder.time.split(":")
-                            val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 0
-                            val isDay = hour in 6..17
-                            val timeIcon = if (isDay) Icons.Default.WbSunny else Icons.Default.ModeNight
-                            val timeIconColor = if (isDay) Color(0xFFFFC107) else Color(0xFF90CAF9)
-                            
-                            Icon(
-                                imageVector = timeIcon,
-                                contentDescription = null,
-                                tint = timeIconColor,
-                                modifier = Modifier.size(26.dp).padding(end = 4.dp)
-                            )
                         }
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Marque se bebeu",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "água / esqueceu",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Toggle completed button
+                        
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             IconButton(
                                 onClick = { onToggleCompleted(reminder) },
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.size(44.dp)
                             ) {
                                 Icon(
                                     imageVector = if (reminder.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                    contentDescription = if (reminder.isCompleted) "Marcar como pendente" else "Marcar como bebido",
+                                    contentDescription = if (reminder.isCompleted) "Desmarcar" else "Marcar que bebeu água",
                                     tint = PrimaryBlue,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
+                            
+                            Spacer(modifier = Modifier.width(4.dp))
 
-                            // Edit button
                             IconButton(
                                 onClick = {
                                     editingReminder = reminder
                                     isNewReminder = false
                                     showEditDialog = true
                                 },
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.size(44.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Edit,
-                                    contentDescription = "Editar Horário",
+                                    contentDescription = "Editar horário",
                                     tint = PrimaryBlue,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(24.dp)
                                 )
-                            }
                             }
                         }
                     }

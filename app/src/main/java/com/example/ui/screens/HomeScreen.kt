@@ -30,9 +30,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.ModeNight
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -384,6 +386,21 @@ fun HomeScreen(
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
+                                val timeParts = reminder.time.split(":")
+                                val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 0
+                                val isDay = hour in 6..17
+                                val timeIcon = if (isDay) Icons.Default.WbSunny else Icons.Default.ModeNight
+                                val timeIconColor = if (isDay) Color(0xFFFFC107) else Color(0xFF90CAF9)
+                                val timeDesc = if (isDay) "Horário da manhã" else "Horário da noite"
+                                
+                                Icon(
+                                    imageVector = timeIcon,
+                                    contentDescription = timeDesc,
+                                    tint = timeIconColor,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = reminder.time,

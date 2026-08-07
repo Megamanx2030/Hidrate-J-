@@ -85,11 +85,7 @@ fun EditReminderDialog(
             val currentMinute = calendar.get(java.util.Calendar.MINUTE)
 
             if (h < currentHour || (h == currentHour && m <= currentMinute)) {
-                // Hora no passado para o dia de hoje, avança data para amanhã automaticamente
-                calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
-                dayStr = String.format(Locale.getDefault(), "%02d", calendar.get(java.util.Calendar.DAY_OF_MONTH))
-                monthStr = String.format(Locale.getDefault(), "%02d", calendar.get(java.util.Calendar.MONTH) + 1)
-                yearStr = String.format(Locale.getDefault(), "%04d", calendar.get(java.util.Calendar.YEAR))
+                // Hora no passado para o dia de hoje, apenas mostra aviso. NAO ALTERA A DATA!
                 autoChangedTimeStr = String.format(Locale.getDefault(), "%02d:%02d", h, m)
                 wasAutoChanged = true
             } else {
@@ -108,7 +104,7 @@ fun EditReminderDialog(
         calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
         val tomorrowStr = todayFormatter.format(calendar.time)
 
-        if (formattedDate != tomorrowStr) {
+        if (formattedDate != defaultDateStr) {
             wasAutoChanged = false
         }
     }
@@ -283,7 +279,7 @@ fun EditReminderDialog(
 
                 if (wasAutoChanged) {
                     Text(
-                        text = "Como $autoChangedTimeStr já passou hoje, o lembrete foi agendado para amanhã.",
+                        text = "Como $autoChangedTimeStr já passou hoje, o lembrete será agendado para amanhã.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = Color(0xFFC62828), // Dark Red for strong contrast
                         fontWeight = FontWeight.Bold,
@@ -311,12 +307,21 @@ fun EditReminderDialog(
                     val m = (minStr.toIntOrNull() ?: 0).coerceIn(0, 59)
                     val formattedTime = String.format("%02d:%02d", h, m)
 
-                    val d = (dayStr.toIntOrNull() ?: 3).coerceIn(1, 31)
-                    val mo = (monthStr.toIntOrNull() ?: 8).coerceIn(1, 12)
-                    val y = (yearStr.toIntOrNull() ?: 2026).coerceIn(2020, 2100)
-                    val formattedDate = String.format("%02d/%02d/%04d", d, mo, y)
+                    var d = (dayStr.toIntOrNull() ?: 3).coerceIn(1, 31)
+                    var mo = (monthStr.toIntOrNull() ?: 8).coerceIn(1, 12)
+                    var y = (yearStr.toIntOrNull() ?: 2026).coerceIn(2020, 2100)
+                    val inputDateStr = String.format(Locale.getDefault(), "%02d/%02d/%04d", d, mo, y)
 
-                    onSave(formattedTime, formattedDate, title.ifBlank { "Hora da Água" })
+                    if (inputDateStr == defaultDateStr && wasAutoChanged) {
+                        val calendar = java.util.Calendar.getInstance(spTimeZone)
+                        calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                        d = calendar.get(java.util.Calendar.DAY_OF_MONTH)
+                        mo = calendar.get(java.util.Calendar.MONTH) + 1
+                        y = calendar.get(java.util.Calendar.YEAR)
+                    }
+                    val finalDateStr = String.format(Locale.getDefault(), "%02d/%02d/%04d", d, mo, y)
+
+                    onSave(formattedTime, finalDateStr, title.ifBlank { "Hora da Água" })
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
                 shape = RoundedCornerShape(12.dp)
