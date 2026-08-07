@@ -104,7 +104,7 @@ fun HistoryScreen(
         logs.groupBy { it.dateString }
     }
 
-    // Past 7 days data for the chart and list
+    // Calendar week data for the chart and list (Sunday to Saturday)
     val pastDaysData = remember(logs, dailyGoalMl, selectedMonthIndex, selectedYear) {
         val list = mutableListOf<Triple<String, String, List<WaterLog>>>() // (formattedDateStr, dateKey, dayLogs)
         val cal = Calendar.getInstance(spTimeZone)
@@ -117,8 +117,11 @@ fun HistoryScreen(
             cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
         }
 
+        // Align to Sunday
+        cal.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+
         val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }
-        val displayFormat = SimpleDateFormat("EEEE, dd/MM", Locale("pt", "BR")).apply { timeZone = spTimeZone }
+        val displayFormat = SimpleDateFormat("EEE, dd/MM", Locale("pt", "BR")).apply { timeZone = spTimeZone }
 
         for (i in 0..6) {
             val key = keyFormat.format(cal.time)
@@ -126,14 +129,14 @@ fun HistoryScreen(
             val label = rawLabel.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
             val dayLogs = groupedLogs[key] ?: emptyList()
             list.add(Triple(label, key, dayLogs))
-            cal.add(Calendar.DAY_OF_YEAR, -1)
+            cal.add(Calendar.DAY_OF_YEAR, 1)
         }
         list
     }
 
     // Chart fill ratios for past 7 days (oldest to newest)
     val chartRatios = remember(pastDaysData) {
-        pastDaysData.reversed().map { (_, _, dayLogs) ->
+        pastDaysData.map { (_, _, dayLogs) ->
             val totalMl = dayLogs.sumOf { it.amountMl }
             (totalMl.toFloat() / dailyGoalMl.toFloat()).coerceIn(0f, 1f)
         }
@@ -141,15 +144,18 @@ fun HistoryScreen(
 
     // Chart day labels (oldest to newest)
     val chartDays = remember(pastDaysData) {
-        pastDaysData.reversed().map { (dateDisplay, _, _) ->
-            dateDisplay.take(1).uppercase(Locale("pt", "BR"))
+        pastDaysData.map { (dateDisplay, _, _) ->
+            dateDisplay.take(3).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
         }
     }
 
     // Daily Average
     val dailyAvgText = remember(pastDaysData) {
-        val nonZero = pastDaysData.map { it.third.sumOf { l -> l.amountMl } }.filter { it > 0 }
-        val avg = if (nonZero.isNotEmpty()) nonZero.average().toInt() else 0
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }.format(Date())
+        val elapsedDaysData = pastDaysData.filter { it.second <= todayStr }
+        val sum = elapsedDaysData.sumOf { it.third.sumOf { l -> l.amountMl } }
+        val daysCount = elapsedDaysData.size
+        val avg = if (daysCount > 0) sum / daysCount else 0
         String.format(Locale("pt", "BR"), "%.1fL", avg / 1000f)
     }
 
@@ -281,12 +287,15 @@ fun HistoryScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Animated Weekly Water Drop Chart with real calculated ratios
+                val todayDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply { timeZone = spTimeZone }.format(java.util.Date())
                 com.example.ui.components.AnimatedWaterDropChart(
                     days = if (chartDays.size == 7) chartDays else listOf("D", "S", "T", "Q", "Q", "S", "S"),
                     fillRatios = if (chartRatios.size == 7) chartRatios else listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp)
+                    dates = pastDaysData.map { it.second },
+                    totalsMl = pastDaysData.map { it.third.sumOf { l -> l.amountMl } },
+                    dailyGoalMl = dailyGoalMl,
+                    todayDate = todayDateStr,
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -309,12 +318,20 @@ fun HistoryScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Média Diária:",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column {
+                            Text(
+                                text = "Média por dia:",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val goalL = String.format(java.util.Locale("pt", "BR"), "%.1fL", dailyGoalMl / 1000f)
+                            Text(
+                                text = "Meta: $goalL por dia",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                     Text(
                         text = dailyAvgText,
@@ -330,7 +347,7 @@ fun HistoryScreen(
 
         // Recent Days Section (Dynamically logged with timestamps)
         Text(
-            text = "Dias Recentes (com horários)",
+            text = "Dias do Mês (com horários)",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,

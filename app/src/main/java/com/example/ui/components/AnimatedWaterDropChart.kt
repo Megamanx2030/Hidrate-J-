@@ -34,13 +34,30 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.PrimaryBlue
 import kotlin.math.sin
 
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+
 @Composable
 fun AnimatedWaterDropChart(
     days: List<String>,
     fillRatios: List<Float>,
+    dates: List<String>,
+    totalsMl: List<Int>,
+    dailyGoalMl: Int,
+    todayDate: String,
     modifier: Modifier = Modifier
 ) {
     val transition = rememberInfiniteTransition(label = "glass_wave")
+    var selectedIndex by remember(dates, todayDate) { mutableStateOf<Int?>(dates.indexOf(todayDate).takeIf { it >= 0 }) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
     val wavePhase by transition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * Math.PI).toFloat(),
@@ -52,17 +69,23 @@ fun AnimatedWaterDropChart(
     )
 
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Bottom
     ) {
         days.forEachIndexed { index, dayLabel ->
             val fill = fillRatios.getOrElse(index) { 0f }.coerceIn(0f, 1f)
-            val isToday = index == days.lastIndex
+            val isToday = dates.getOrNull(index) == todayDate
+            val isSelected = selectedIndex == index
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .defaultMinSize(minHeight = 48.dp)
+                    .clickable {
+                        if (selectedIndex == index) selectedIndex = null else selectedIndex = index
+                    }
             ) {
                 // Percentage badge above glass
                 Text(
@@ -75,21 +98,58 @@ fun AnimatedWaterDropChart(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Replaced Canvas with MiniWaterGlassIcon
-                com.example.ui.components.MiniWaterGlassIcon(
-                    size = 44.dp,
-                    fillRatio = fill
-                )
+                val glassModifier = if (isSelected) {
+                    Modifier
+                        .border(2.dp, PrimaryBlue, RoundedCornerShape(6.dp))
+                        .padding(2.dp)
+                } else {
+                    Modifier
+                }
+
+                Box(modifier = glassModifier) {
+                    com.example.ui.components.MiniWaterGlassIcon(
+                        size = 44.dp,
+                        fillRatio = fill
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
                     text = dayLabel,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp),
                     color = if (isToday) PrimaryBlue else MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
+    }
+
+    if (selectedIndex != null) {
+        val idx = selectedIndex!!
+        val selectedDateStr = dates.getOrNull(idx)
+        val selectedTotal = totalsMl.getOrNull(idx) ?: 0
+        if (selectedDateStr != null) {
+            val parsed = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).parse(selectedDateStr)
+            val fullDateStr = parsed?.let {
+                java.text.SimpleDateFormat("EEEE, dd/MM", java.util.Locale("pt", "BR")).format(it)
+                    .replaceFirstChar { char -> if (char.isLowerCase()) char.titlecase(java.util.Locale("pt", "BR")) else char.toString() }
+            } ?: selectedDateStr
+            
+            val ratio = if (dailyGoalMl > 0) (selectedTotal.toFloat() / dailyGoalMl.toFloat()).coerceIn(0f, 1f) else 0f
+            val ratioPercent = (ratio * 100).toInt()
+            val totalL = String.format(java.util.Locale("pt", "BR"), "%.1fL", selectedTotal / 1000f)
+            val goalL = String.format(java.util.Locale("pt", "BR"), "%.1fL", dailyGoalMl / 1000f)
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "$fullDateStr — $totalL de $goalL ($ratioPercent%)",
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+        }
+    }
     }
 }

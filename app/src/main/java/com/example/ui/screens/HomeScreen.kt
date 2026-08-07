@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -75,9 +76,6 @@ fun HomeScreen(
 ) {
     val scrollState = rememberScrollState()
 
-    var dummyProgress by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0f) }
-    var isEmptying by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-
     // Use safe division to avoid divide-by-zero
     val glassSizeMl = settings.glassSizeMl.coerceAtLeast(1)
     val dailyGoalMl = settings.dailyGoalMl.coerceAtLeast(1)
@@ -85,6 +83,30 @@ fun HomeScreen(
     val cupsDrunk = todayTotalMl / glassSizeMl
     val totalCupsTarget = (dailyGoalMl / glassSizeMl).coerceAtLeast(1)
     val dailyProgress = (todayTotalMl.toFloat() / dailyGoalMl.toFloat()).coerceIn(0f, 1f)
+
+    var dummyProgress by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(dailyProgress) }
+    var isEmptying by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    var touchCount by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(0) }
+
+    androidx.compose.runtime.LaunchedEffect(dailyProgress) {
+        if (touchCount == 0) {
+            dummyProgress = dailyProgress
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(touchCount) {
+        if (touchCount > 0) {
+            kotlinx.coroutines.delay(4000)
+            dummyProgress = dailyProgress
+            isEmptying = false
+            touchCount = 0
+        }
+    }
+
+    val animatedDummyProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = dummyProgress,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 1000)
+    )
 
     val monthlyGoalMl = (settings.monthlyGoalLiters * 1000).toInt().coerceAtLeast(1)
     val monthlyProgress = (monthlyTotalMl.toFloat() / monthlyGoalMl.toFloat()).coerceIn(0f, 1f)
@@ -178,8 +200,8 @@ fun HomeScreen(
             contentAlignment = Alignment.Center
         ) {
             com.example.ui.components.AnimatedWaterGlass(
-                progress = dummyProgress,
-                cupsDrunk = (dummyProgress * totalCupsTarget).toInt(),
+                progress = animatedDummyProgress,
+                cupsDrunk = (animatedDummyProgress * totalCupsTarget).toInt(),
                 totalCupsTarget = totalCupsTarget,
                 todayTotalMl = todayTotalMl,
                 dailyGoalMl = dailyGoalMl,
@@ -189,6 +211,7 @@ fun HomeScreen(
                         interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                         indication = null,
                         onClick = {
+                            touchCount++
                             if (!isEmptying) {
                                 dummyProgress += 0.2f
                                 if (dummyProgress >= 1f) {
@@ -246,9 +269,17 @@ fun HomeScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Toque no copo para beber!",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Toque no copo para ver a água subir",
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Seu consumo é registrado no lembrete",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 16.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium
             )
         }
 
