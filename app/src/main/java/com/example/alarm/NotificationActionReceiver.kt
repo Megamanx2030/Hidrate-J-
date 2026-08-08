@@ -104,8 +104,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                 isCompleted = true,
                                 completedTime = currentTimeStr,
                                 isSkipped = false,
-                                skippedDate = "",
-                                skippedTime = "",
+                                // skippedDate e skippedTime ficam: e o que
+                                // permite mostrar "Esqueceu as X, mas bebeu
+                                // depois as Y" nas telas.
                                 waterLogId = logId.toInt()
                             )
                         )

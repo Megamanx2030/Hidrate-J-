@@ -31,13 +31,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DateRangePicker
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -71,7 +67,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     logs: List<WaterLog>,
@@ -606,12 +601,21 @@ fun HistoryScreen(
                 val dateText = reminder.skippedDate.ifBlank { reminder.date.ifBlank { "Hoje" } }
                 val timeText = reminder.skippedTime.ifBlank { reminder.time }
 
-                // O antigo "isRecovered" era inalcancavel: ao confirmar, o
-                // confirmWaterAlert zera o skippedDate, e o lembrete cai fora
-                // do filtro la em cima, que exige skippedDate preenchido.
-                // A mensagem "Esqueceu as X, mas bebeu depois as Y" nunca
-                // aparecia. Removido junto com as cores condicionais.
-                val descText = "Esqueceu de beber em: $dateText às $timeText"
+                // O "bebeu depois" voltou a ser alcancavel.
+                //
+                // Ele era codigo morto porque o confirmWaterAlert zerava o
+                // skippedDate ao confirmar, e o lembrete caia fora do filtro
+                // que exige skippedDate preenchido. Agora esses campos sao
+                // preservados, entao a hora em que a agua foi marcada na tela
+                // de Lembretes aparece aqui, junto com a hora esquecida.
+                val bebeuDepois = reminder.isCompleted
+                val horaBebido = reminder.completedTime.ifBlank { reminder.time }
+
+                val descText = if (bebeuDepois) {
+                    "Esqueceu às $timeText, mas bebeu depois às $horaBebido"
+                } else {
+                    "Esqueceu de beber em: $dateText às $timeText"
+                }
 
                 Card(
                     modifier = Modifier
@@ -636,14 +640,17 @@ fun HistoryScreen(
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
-                                    .background(ErrorContainer, CircleShape),
+                                    .background(
+                                        if (bebeuDepois) SecondaryContainer else ErrorContainer,
+                                        CircleShape
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
                                     contentDescription =
                                         "Apagar o aviso de esquecido de ${reminder.title} das $timeText",
-                                    tint = ErrorRed,
+                                    tint = if (bebeuDepois) PrimaryBlue else ErrorRed,
                                     modifier = Modifier.size(26.dp)
                                 )
                             }
@@ -663,7 +670,7 @@ fun HistoryScreen(
                             Text(
                                 text = descText,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = ErrorRed,
+                                color = if (bebeuDepois) PrimaryBlue else ErrorRed,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
@@ -830,70 +837,16 @@ fun HistoryScreen(
      * conversao usa ZoneOffset.UTC -- usar o fuso local aqui deslocaria o dia.
      */
     if (showMonthPickerDialog) {
-        val rangeState = rememberDateRangePickerState(
-            initialSelectedStartDateMillis = rangeStart.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            initialSelectedEndDateMillis = rangeEnd.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        )
-
-        DatePickerDialog(
-            onDismissRequest = { showMonthPickerDialog = false },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val inicioMs = rangeState.selectedStartDateMillis
-                        val fimMs = rangeState.selectedEndDateMillis
-                        if (inicioMs != null) {
-                            val inicio = java.time.Instant.ofEpochMilli(inicioMs)
-                                .atZone(ZoneOffset.UTC).toLocalDate()
-                            // Tocar em um dia so vale como periodo de um dia.
-                            val fim = if (fimMs != null) {
-                                java.time.Instant.ofEpochMilli(fimMs)
-                                    .atZone(ZoneOffset.UTC).toLocalDate()
-                            } else inicio
-
-                            rangeStart = inicio
-                            rangeEnd = fim
-                        }
-                        showMonthPickerDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.CyanAction),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text("Concluir", fontWeight = FontWeight.Bold, color = Color.White)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showMonthPickerDialog = false },
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text("Cancelar", fontWeight = FontWeight.Bold)
-                }
+        DateRangeCalendarDialog(
+            inicialSelecionado = rangeStart,
+            finalSelecionado = rangeEnd,
+            hoje = currentLocalDate,
+            onDismiss = { showMonthPickerDialog = false },
+            onConfirm = { inicio, fim ->
+                rangeStart = inicio
+                rangeEnd = fim
+                showMonthPickerDialog = false
             }
-        ) {
-            DateRangePicker(
-                state = rangeState,
-                title = {
-                    Text(
-                        text = "Escolha o período",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = com.example.ui.theme.CyanAction,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 16.dp, top = 16.dp)
-                    )
-                },
-                headline = {
-                    Text(
-                        text = "Toque no primeiro dia e depois no último",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
-                    )
-                },
-                showModeToggle = false,
-                modifier = Modifier.weight(1f)
-            )
-        }
+        )
     }
 }

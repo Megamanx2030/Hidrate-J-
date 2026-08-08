@@ -508,29 +508,52 @@ fun RemindersScreen(
                                     maxLines = 2
                                 )
 
-                                val statusText = when {
-                                    reminder.isCompleted -> {
-                                        val timeStr = if (reminder.completedTime.isNotBlank()) reminder.completedTime else reminder.time
-                                        "Bebido às $timeStr"
-                                    }
-                                    reminder.isSkipped -> "Esqueceu de beber"
-                                    else -> "Pendente"
+                                // AS DUAS INFORMACOES CONVIVEM.
+                                //
+                                // Antes era um when: marcar o circulo fazia o
+                                // "Esqueceu de beber" desaparecer, como se o
+                                // lembrete nunca tivesse sido perdido. O dado
+                                // continuava no banco (o skippedTime nao e
+                                // apagado), so nao era mostrado.
+                                //
+                                // Agora, se o lembrete foi esquecido E depois
+                                // bebido, as duas linhas aparecem juntas.
+                                val foiEsquecido = reminder.isSkipped || reminder.skippedTime.isNotBlank()
+                                val horaEsquecido = reminder.skippedTime.ifBlank { reminder.time }
+                                val horaBebido = reminder.completedTime.ifBlank { reminder.time }
+
+                                if (reminder.isCompleted) {
+                                    Text(
+                                        text = "Bebido às $horaBebido",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = PrimaryBlue,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
 
-                                val statusColor = when {
-                                    reminder.isCompleted -> PrimaryBlue
-                                    reminder.isSkipped -> ErrorRed
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                if (foiEsquecido) {
+                                    Text(
+                                        text = "Esqueceu de beber às $horaEsquecido",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = ErrorRed,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
 
-                                Text(
-                                    text = statusText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = statusColor,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                if (!reminder.isCompleted && !foiEsquecido) {
+                                    Text(
+                                        text = "Pendente",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
 
                                 if (reminder.date.isNotBlank()) {
                                     Text(

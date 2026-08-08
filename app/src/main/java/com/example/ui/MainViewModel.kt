@@ -509,8 +509,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             isCompleted = true,
                             completedTime = currentTimeStr,
                             isSkipped = false,
-                            skippedDate = "",
-                            skippedTime = "",
+                            // skippedDate e skippedTime NAO sao apagados de
+                            // proposito: e o que permite mostrar "Esqueceu as
+                            // 06:00, mas bebeu depois as 09:30" nas duas telas.
+                            // Antes eram zerados aqui e a informacao de que o
+                            // lembrete tinha sido esquecido sumia para sempre.
                             waterLogId = logId.toInt()
                         )
                     )
