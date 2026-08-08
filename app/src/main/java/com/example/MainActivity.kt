@@ -21,6 +21,10 @@ import com.example.ui.theme.HydraCompanionTheme
 
 class MainActivity : ComponentActivity() {
 
+    private companion object {
+        const val TAG = "HidrateJa"
+    }
+
     private val viewModel: MainViewModel by viewModels()
 
     // Evita repetir o aviso a cada volta para o app dentro da mesma sessao.
@@ -34,9 +38,15 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         
-        var prontoParaMostrar = false
-        window.decorView.postDelayed({ prontoParaMostrar = true }, 1500)
-        splashScreen.setKeepOnScreenCondition { !prontoParaMostrar }
+        val veioDoAlarme = intent?.getBooleanExtra("from_notification", false) == true
+        android.util.Log.d(TAG, "MainActivity.onCreate veioDoAlarme=$veioDoAlarme")
+        if (veioDoAlarme) {
+            splashScreen.setKeepOnScreenCondition { false }
+        } else {
+            var prontoParaMostrar = false
+            window.decorView.postDelayed({ prontoParaMostrar = true }, 1500)
+            splashScreen.setKeepOnScreenCondition { !prontoParaMostrar }
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -73,6 +83,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        android.util.Log.d(TAG, "MainActivity.onResume")
+
+        // Abrir o app pelo icone com a task ja existente NAO recria a Activity
+        // nem a ViewModel (o sistema so traz a task para frente), entao o init
+        // da ViewModel nao roda e a varredura de alerta perdido nunca
+        // acontecia. Por isso ela precisa estar aqui tambem.
+        viewModel.checkMissedAlertOnResume()
+
         // A checagem fica no onResume porque o usuario volta para ca depois
         // de conceder (ou nao) a permissao na tela de configuracoes.
         checkAlarmPermissions()
@@ -80,6 +98,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
+        android.util.Log.d(TAG, "MainActivity.onNewIntent")
         setIntent(intent)
         handleIntent(intent)
     }
@@ -88,16 +107,24 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra("from_notification", false) == true) {
             val reminderId = intent.getIntExtra("reminder_id", -1)
             val alertTimestamp = intent.getLongExtra("alert_timestamp", 0L)
-            
+
             intent.replaceExtras(android.os.Bundle())
             setIntent(intent)
-            
+
             val isTooOld = System.currentTimeMillis() - alertTimestamp > 2 * 60 * 1000
-            
-            if (reminderId != -1 && !isTooOld && !viewModel.isAlertVisible.value) {
+            val jaVisivel = viewModel.isAlertVisible.value
+
+            android.util.Log.d(
+                TAG,
+                "MainActivity.handleIntent reminderId=$reminderId isTooOld=$isTooOld jaVisivel=$jaVisivel"
+            )
+
+            if (reminderId != -1 && !isTooOld && !jaVisivel) {
                 // O WaterAlarmService ja esta tocando o som, entao aqui
                 // so exibimos a tela azul.
                 viewModel.triggerWaterAlert(reminderId, playMedia = false)
+            } else {
+                android.util.Log.d(TAG, "MainActivity.handleIntent NAO abriu a tela azul")
             }
         }
     }

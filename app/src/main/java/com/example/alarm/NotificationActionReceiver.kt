@@ -16,10 +16,16 @@ import java.util.TimeZone
 
 class NotificationActionReceiver : BroadcastReceiver() {
 
-    override fun onReceive(context: Context, intent: Intent) {
-        com.example.alarm.WaterAlarmService.stop(context)
+    private companion object {
+        const val TAG = "HidrateJa"
+    }
 
+    override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getIntExtra("reminder_id", -1)
+        android.util.Log.d(TAG, "NotificationAction acao=${intent.action} reminderId=$reminderId")
+        com.example.alarm.WaterAlarmService.stopAndDismiss(context, reminderId)
+
+
         val time = intent.getStringExtra("time") ?: ""
         val chimeType = intent.getStringExtra("chime_type") ?: "Sino Suave"
         val title = intent.getStringExtra("title") ?: "Hora da Água"
@@ -31,7 +37,19 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
         when (intent.action) {
             "ACTION_DISMISS_WATER" -> {
-                // Already stopped the service above, nothing else to do.
+                // Arrastar a notificacao para fora NAO marca como esquecido.
+                //
+                // O app e para idosos, e limpar a barra de notificacoes e gesto
+                // reflexo -- nao e declaracao de que nao vai beber agua. O
+                // lembrete continua PENDENTE e so vira "esquecido" pelo
+                // markMissedRemindersAsSkipped, depois dos 15 minutos de
+                // carencia. Marcar aqui na hora apagava toda chance de a tela
+                // azul ainda aparecer, porque isSkipped bloqueia o
+                // triggerWaterAlert, o checkMissedRecentAlert e o poll de 3s.
+                //
+                // Quem marca na hora e o botao "❌ Ignorar"
+                // (ACTION_IGNORE_WATER), onde houve decisao explicita.
+                android.util.Log.d(TAG, "Notificacao dispensada: segue PENDENTE (nao marca esquecido)")
                 return
             }
             "ACTION_CONFIRM_WATER" -> {
@@ -71,12 +89,11 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         )
                     }
                 }
-
-                // Dismiss notification
-                NotificationHelper(context).cancelNotification(reminderId)
             }
 
             "ACTION_IGNORE_WATER" -> {
+                // Decisao explicita do usuario: marca esquecido na hora.
+                android.util.Log.d(TAG, "Botao Ignorar: marcando como esquecido agora")
                 CoroutineScope(Dispatchers.IO).launch {
                     // Mark reminder as skipped
                     val reminders = db.reminderDao().getAllRemindersOnce()
@@ -97,9 +114,6 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         )
                     }
                 }
-
-                // Dismiss notification
-                NotificationHelper(context).cancelNotification(reminderId)
             }
         }
     }

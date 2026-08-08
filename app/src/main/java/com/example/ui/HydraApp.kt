@@ -53,6 +53,14 @@ fun HydraApp(viewModel: MainViewModel) {
 
     val showSettingsDialog by viewModel.showSettingsDialog.collectAsStateWithLifecycle()
     val showAddWaterDialog by viewModel.showAddWaterDialog.collectAsStateWithLifecycle()
+    val pendingAlertReminderId by viewModel.pendingAlertReminderId.collectAsStateWithLifecycle()
+
+    androidx.compose.runtime.LaunchedEffect(pendingAlertReminderId) {
+        pendingAlertReminderId?.let { id ->
+            viewModel.triggerWaterAlert(id, playMedia = false)
+            viewModel.clearPendingAlert()
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(

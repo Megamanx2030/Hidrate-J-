@@ -51,6 +51,27 @@ class NotificationHelper(private val context: Context) {
     }
 
     /**
+     * Mesmo opt-in do AlarmScheduler: no Android 15+ com targetSdk 35 ou
+     * maior, quem cria o PendingIntent precisa autorizar explicitamente a
+     * abertura de tela a partir do background, senao o sistema barra com
+     * "balRequireOptInByPendingIntentCreator: true". Vale tambem para o
+     * PendingIntent usado no setFullScreenIntent.
+     */
+    private fun balOptInBundle(): android.os.Bundle? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return null
+        return try {
+            android.app.ActivityOptions.makeBasic()
+                .setPendingIntentCreatorBackgroundActivityStartMode(
+                    android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                )
+                .toBundle()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
      * Monta a notificacao sem exibir. O WaterAlarmService precisa do objeto
      * Notification para passar ao startForeground().
      */
@@ -74,7 +95,8 @@ class NotificationHelper(private val context: Context) {
             context,
             reminderId * 100,
             openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            balOptInBundle()
         )
 
         val confirmIntent = Intent(context, NotificationActionReceiver::class.java).apply {

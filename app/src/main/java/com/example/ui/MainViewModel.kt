@@ -95,6 +95,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _showAddWaterDialog = MutableStateFlow(false)
     val showAddWaterDialog: StateFlow<Boolean> = _showAddWaterDialog.asStateFlow()
 
+    private val _pendingAlertReminderId = MutableStateFlow<Int?>(null)
+    val pendingAlertReminderId: StateFlow<Int?> = _pendingAlertReminderId.asStateFlow()
+
+    fun clearPendingAlert() {
+        _pendingAlertReminderId.value = null
+    }
+
     init {
         viewModelScope.launch {
             repository.initDefaultDataIfNeeded()
@@ -105,6 +112,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             resetDailyStatusIfNewDay()
 
             markMissedRemindersAsSkipped()
+            
+            checkMissedRecentAlert()
 
             scheduleAllReminders()
         }
@@ -128,6 +137,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             .find { it.time == currentHHmm && !it.isCompleted && !it.isSkipped }
                         if (matchingReminder != null) {
                             lastTriggeredMinute = currentHHmm
+                            android.util.Log.d(
+                                "HidrateJa",
+                                "Poll 3s encontrou lembrete ${matchingReminder.id} em $currentHHmm"
+                            )
                             triggerWaterAlert(matchingReminder.id, playMedia = false)
                         }
                     }
@@ -191,6 +204,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val JANELA_CARENCIA_MIN = 15
+
     /** Marca como esquecido o que ja passou da hora e nao foi confirmado hoje. */
     private suspend fun markMissedRemindersAsSkipped() {
         val spZone = java.time.ZoneId.of("America/Sao_Paulo")
@@ -200,15 +215,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         db.reminderDao().getAllRemindersOnce().forEach { reminder ->
             if (!reminder.isCompleted && !reminder.isSkipped && reminder.time < currentHHmm) {
-                repository.updateReminder(
-                    reminder.copy(
-                        isSkipped = true,
-                        skippedDate = dateStr,
-                        skippedTime = reminder.time,
-                        date = getNextOccurrenceDateString(reminder.time)
-                    )
-                )
+                val parts = reminder.time.split(":")
+                if (parts.size == 2) {
+                    val h = parts[0].toIntOrNull() ?: 0
+                    val m = parts[1].toIntOrNull() ?: 0
+                    val reminderTime = java.time.LocalTime.of(h, m)
+                    val duration = java.time.Duration.between(reminderTime, nowSp)
+                    
+                    // So marca como esquecido se ja passaram mais da janela de carencia
+                    if (!duration.isNegative && duration.toMinutes() > JANELA_CARENCIA_MIN) {
+                        repository.updateReminder(
+                            reminder.copy(
+                                isSkipped = true,
+                                skippedDate = dateStr,
+                                skippedTime = reminder.time,
+                                date = getNextOccurrenceDateString(reminder.time)
+                            )
+                        )
+                    }
+                }
             }
+        }
+    }
+    
+    /**
+     * Chamada pelo onResume da MainActivity.
+     *
+     * Abrir o app pelo icone quando a task ja existe traz a Activity para a
+     * frente SEM recriar a ViewModel (START_TASK_TO_FRONT), entao o init nao
+     * roda e a varredura de alerta perdido nao acontecia -- comprovado no
+     * logcat: nenhuma linha "Found/No missed alert" naquela abertura.
+     */
+    fun checkMissedAlertOnResume() {
+        if (_isAlertVisible.value) {
+            android.util.Log.d("HidrateJa", "onResume: alerta ja visivel, nao checa")
+            return
+        }
+        viewModelScope.launch {
+            android.util.Log.d("HidrateJa", "onResume: checando alerta perdido")
+            checkMissedRecentAlert()
+        }
+    }
+
+    private suspend fun checkMissedRecentAlert() {
+        val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+        val nowSp = java.time.LocalTime.now(spZone)
+        val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
+        
+        val recentMissed = db.reminderDao().getAllRemindersOnce().filter { reminder ->
+            !reminder.isCompleted && !reminder.isSkipped && reminder.time < currentHHmm
+        }.filter { reminder ->
+            val parts = reminder.time.split(":")
+            if (parts.size == 2) {
+                val h = parts[0].toIntOrNull() ?: 0
+                val m = parts[1].toIntOrNull() ?: 0
+                val reminderTime = java.time.LocalTime.of(h, m)
+                val duration = java.time.Duration.between(reminderTime, nowSp)
+                !duration.isNegative && duration.toMinutes() <= JANELA_CARENCIA_MIN
+            } else false
+        }.maxByOrNull { it.time }
+
+        if (recentMissed != null) {
+            android.util.Log.d("HidrateJa", "Found missed alert: ${recentMissed.id} at ${recentMissed.time}")
+            _pendingAlertReminderId.value = recentMissed.id
+        } else {
+            android.util.Log.d("HidrateJa", "No missed alert found")
         }
     }
 
@@ -283,49 +354,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var lastDismissedTimestamp: Long = 0L
 
     fun triggerWaterAlert(reminderId: Int? = null, playMedia: Boolean = true) {
-        if (reminderId != null) {
-            val reminder = allReminders.value.find { it.id == reminderId }
-            if (reminder != null && (reminder.isCompleted || reminder.isSkipped)) {
-                return
+        viewModelScope.launch {
+            android.util.Log.d("HidrateJa", "triggerWaterAlert id=$reminderId playMedia=$playMedia")
+            if (reminderId != null) {
+                val reminder = db.reminderDao().getAllRemindersOnce().find { it.id == reminderId }
+                if (reminder != null && (reminder.isCompleted || reminder.isSkipped)) {
+                    android.util.Log.d(
+                        "HidrateJa",
+                        "triggerWaterAlert ABORTOU: isCompleted=${reminder.isCompleted} isSkipped=${reminder.isSkipped}"
+                    )
+                    return@launch
+                }
+                if (reminderId == lastDismissedReminderId && (System.currentTimeMillis() - lastDismissedTimestamp < 2 * 60 * 1000)) {
+                    android.util.Log.d("HidrateJa", "triggerWaterAlert ABORTOU: dispensado ha menos de 2 min")
+                    return@launch
+                }
             }
-            if (reminderId == lastDismissedReminderId && (System.currentTimeMillis() - lastDismissedTimestamp < 2 * 60 * 1000)) {
-                return
+
+            activeReminderId = reminderId
+            android.util.Log.d("HidrateJa", "triggerWaterAlert -> tela azul VISIVEL")
+            _isAlertVisible.value = true
+            _countdownSeconds.value = userSettings.value.ringtoneDurationSeconds
+
+            if (playMedia) {
+                val isVibrateOnly = userSettings.value.vibrateOnly
+                val isAlertsEnabled = userSettings.value.alertsEnabled
+
+                // Start sound and/or vibration based on settings
+                if (isVibrateOnly) {
+                    soundAndVibrationManager.vibrateOnly(
+                        durationSeconds = userSettings.value.ringtoneDurationSeconds,
+                        onFinished = {
+                            // Keep overlay open
+                        }
+                    )
+                } else if (isAlertsEnabled) {
+                    soundAndVibrationManager.playGentleBellAndVibrate(
+                        durationSeconds = userSettings.value.ringtoneDurationSeconds,
+                        chimeType = userSettings.value.chimeType,
+                        onFinished = {
+                            // Keep overlay open
+                        }
+                    )
+                }
             }
-        }
 
-        activeReminderId = reminderId
-        _isAlertVisible.value = true
-        _countdownSeconds.value = userSettings.value.ringtoneDurationSeconds
-
-        if (playMedia) {
-            val isVibrateOnly = userSettings.value.vibrateOnly
-            val isAlertsEnabled = userSettings.value.alertsEnabled
-
-            // Start sound and/or vibration based on settings
-            if (isVibrateOnly) {
-                soundAndVibrationManager.vibrateOnly(
-                    durationSeconds = userSettings.value.ringtoneDurationSeconds,
-                    onFinished = {
-                        // Keep overlay open
-                    }
-                )
-            } else if (isAlertsEnabled) {
-                soundAndVibrationManager.playGentleBellAndVibrate(
-                    durationSeconds = userSettings.value.ringtoneDurationSeconds,
-                    chimeType = userSettings.value.chimeType,
-                    onFinished = {
-                        // Keep overlay open
-                    }
-                )
-            }
-        }
-
-        // Countdown timer
-        countdownJob?.cancel()
-        countdownJob = viewModelScope.launch {
-            while (_countdownSeconds.value > 0 && _isAlertVisible.value) {
-                delay(1000)
-                _countdownSeconds.value = _countdownSeconds.value - 1
+            // Countdown timer
+            countdownJob?.cancel()
+            countdownJob = launch {
+                while (_countdownSeconds.value > 0 && _isAlertVisible.value) {
+                    delay(1000)
+                    _countdownSeconds.value = _countdownSeconds.value - 1
+                }
             }
         }
     }
@@ -475,13 +555,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateReminder(reminder: Reminder) {
         viewModelScope.launch {
-            repository.updateReminder(reminder)
+            // Mudar o HORARIO cria uma ocorrencia nova: o status de hoje
+            // (bebido/esquecido) era do horario antigo e nao vale mais.
+            //
+            // Sem isto, um lembrete marcado como esquecido continuava esquecido
+            // depois de mudar de horario, e ficava mudo o resto do dia --
+            // isSkipped bloqueia o triggerWaterAlert, o checkMissedRecentAlert
+            // e o poll de 3s. Foi exatamente o que aconteceu no teste das 21:23.
+            val anterior = db.reminderDao().getAllRemindersOnce().find { it.id == reminder.id }
+            val horarioMudou = anterior != null && anterior.time != reminder.time
+
+            val paraSalvar = if (horarioMudou) {
+                android.util.Log.d(
+                    "HidrateJa",
+                    "updateReminder ${reminder.id}: horario ${anterior?.time} -> ${reminder.time}, limpando status"
+                )
+                reminder.copy(
+                    isCompleted = false,
+                    completedTime = "",
+                    isSkipped = false,
+                    skippedDate = "",
+                    skippedTime = "",
+                    waterLogId = 0
+                )
+            } else {
+                reminder
+            }
+
+            repository.updateReminder(paraSalvar)
             // Reschedule alarm with new time
             alarmScheduler.scheduleReminder(
-                reminderId = reminder.id,
-                time = reminder.time,
+                reminderId = paraSalvar.id,
+                time = paraSalvar.time,
                 chimeType = userSettings.value.chimeType,
-                title = reminder.title
+                title = paraSalvar.title
             )
         }
     }

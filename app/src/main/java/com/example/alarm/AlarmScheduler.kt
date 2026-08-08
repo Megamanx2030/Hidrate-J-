@@ -101,6 +101,34 @@ class AlarmScheduler(private val context: Context) {
         return calendar.timeInMillis
     }
 
+    /**
+     * O OPT-IN QUE FALTAVA PARA A TELA AZUL COM O CELULAR DESBLOQUEADO.
+     *
+     * No Android 15+ com targetSdk 35 ou maior, QUEM CRIA o PendingIntent
+     * precisa declarar que autoriza abrir tela a partir do background. Sem
+     * isso o sistema barra o startActivity do receiver. O logcat mostrou
+     * exatamente esta exigencia:
+     *
+     *   Background activity launch blocked! ...
+     *   balRequireOptInByPendingIntentCreator: true
+     *
+     * Isto vale para o PendingIntent do alarme (que acorda o receiver) e para
+     * o da notificacao. Nao exige nenhuma permissao do usuario.
+     */
+    private fun balOptInBundle(): android.os.Bundle? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return null
+        return try {
+            android.app.ActivityOptions.makeBasic()
+                .setPendingIntentCreatorBackgroundActivityStartMode(
+                    android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                )
+                .toBundle()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     private fun buildPendingIntent(
         reminderId: Int,
         time: String,
@@ -113,6 +141,10 @@ class AlarmScheduler(private val context: Context) {
             putExtra("title", title)
             putExtra("time", time)
         }
+        // NAO da para passar o opt-in de BAL aqui: PendingIntent.getBroadcast
+        // nao tem sobrecarga com Bundle de opcoes -- so getActivity tem.
+        // Por isso o opt-in fica no showIntent e no PendingIntent da
+        // notificacao, que sao os que abrem tela.
         return PendingIntent.getBroadcast(
             context,
             reminderId,
@@ -147,7 +179,8 @@ class AlarmScheduler(private val context: Context) {
             context,
             reminderId + 500_000,
             Intent(context, com.example.MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            balOptInBundle()
         )
 
         val podeExato = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||

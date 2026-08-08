@@ -103,9 +103,56 @@ object AlarmPermissionHelper {
         }
     }
 
-    /** True quando as tres estao OK. Use para mostrar um aviso na tela inicial. */
+    // ---------- 4. Aviso por cima de outro aplicativo ----------
+
+    /**
+     * SEM ESTA, A TELA AZUL SO APARECE COM O CELULAR BLOQUEADO.
+     *
+     * Com o celular desbloqueado o Android nao honra o setFullScreenIntent
+     * (rebaixa para notificacao heads-up), entao quem precisa abrir a tela
+     * azul e um startActivity vindo do alarme. So que iniciar Activity a
+     * partir do background e bloqueado por padrao -- confirmado no logcat
+     * deste projeto com "Background activity launch blocked".
+     *
+     * Ter esta permissao e uma das isencoes de BAL previstas no AOSP, e por
+     * ser do AOSP nenhum fabricante consegue barrar.
+     *
+     * NAO e obrigatoria: sem ela o app segue avisando por som, vibracao e
+     * notificacao. So a tela azul com o celular desbloqueado deixa de sair.
+     */
+    fun canDrawOverlays(context: Context): Boolean {
+        return try {
+            Settings.canDrawOverlays(context)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun openOverlaySettings(context: Context) {
+        try {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${context.packageName}")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            // Alguns fabricantes nao aceitam o atalho com o pacote.
+            // Cai para a lista geral.
+            try {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (e2: Exception) {
+                e2.printStackTrace()
+            }
+        }
+    }
+
+    /** True quando as quatro estao OK. Use para mostrar um aviso na tela inicial. */
     fun allGranted(context: Context): Boolean =
         canUseFullScreenIntent(context) &&
         canScheduleExactAlarms(context) &&
+        canDrawOverlays(context) &&
         isIgnoringBatteryOptimizations(context)
 }

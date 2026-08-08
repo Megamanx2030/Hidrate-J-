@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Toca o alarme (som + vibracao) com o app fechado.
@@ -36,6 +37,7 @@ class WaterAlarmService : Service() {
 
     companion object {
         const val ACTION_STOP_ALARM = "com.example.alarm.ACTION_STOP_ALARM"
+        const val ACTION_STOP_AND_DISMISS = "com.example.alarm.ACTION_STOP_AND_DISMISS"
         const val EXTRA_REMINDER_ID = "reminder_id"
         const val EXTRA_CHIME_TYPE = "chime_type"
         const val EXTRA_TITLE = "title"
@@ -54,25 +56,42 @@ class WaterAlarmService : Service() {
                 e.printStackTrace()
             }
         }
+        
+        fun stopAndDismiss(context: android.content.Context, reminderId: Int) {
+            val intent = Intent(context, WaterAlarmService::class.java).apply {
+                action = ACTION_STOP_AND_DISMISS
+                putExtra(EXTRA_REMINDER_ID, reminderId)
+            }
+            try {
+                context.startService(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var soundManager: SoundAndVibrationManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private var alreadyStopping = false
+    private val alreadyStopping = AtomicBoolean(false)
     private var isForegroundStarted = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP_ALARM) {
-            finishAlarm()
-            return START_NOT_STICKY
-        }
-
         val reminderId = intent?.getIntExtra(EXTRA_REMINDER_ID, -1) ?: -1
         if (reminderId == -1) {
             stopSelf()
+            return START_NOT_STICKY
+        }
+        
+        if (intent?.action == ACTION_STOP_ALARM) {
+            finishAlarm(removerNotificacao = false, reminderId = reminderId)
+            return START_NOT_STICKY
+        }
+        
+        if (intent?.action == ACTION_STOP_AND_DISMISS) {
+            finishAlarm(removerNotificacao = true, reminderId = reminderId)
             return START_NOT_STICKY
         }
 
@@ -118,14 +137,20 @@ class WaterAlarmService : Service() {
 
             val manager = SoundAndVibrationManager(applicationContext)
             soundManager = manager
+            
+            // Timeout de seguranca caso o callback nao seja chamado
+            scope.launch {
+                kotlinx.coroutines.delay(12_000)
+                finishAlarm(removerNotificacao = false, reminderId = reminderId)
+            }
 
             when {
-                vibrateOnly -> manager.vibrateOnly(ALARM_DURATION_SECONDS) { finishAlarm() }
+                vibrateOnly -> manager.vibrateOnly(ALARM_DURATION_SECONDS) { finishAlarm(removerNotificacao = false, reminderId = reminderId) }
                 alertsEnabled -> manager.playGentleBellAndVibrate(
                     durationSeconds = ALARM_DURATION_SECONDS,
                     chimeType = chimeType
-                ) { finishAlarm() }
-                else -> finishAlarm()
+                ) { finishAlarm(removerNotificacao = false, reminderId = reminderId) }
+                else -> finishAlarm(removerNotificacao = false, reminderId = reminderId)
             }
         }
 
@@ -135,24 +160,31 @@ class WaterAlarmService : Service() {
     /** Callback do SHORT_SERVICE: o sistema avisa que o tempo acabou. */
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun onTimeout(startId: Int) {
-        finishAlarm()
+        finishAlarm(removerNotificacao = false, reminderId = -1)
     }
 
     /**
-     * Encerra o servico MANTENDO a notificacao na barra.
-     * STOP_FOREGROUND_DETACH desvincula a notificacao do servico, entao os
-     * botoes "Bebi Água" e "Ignorar" continuam disponiveis depois que o som para.
+     * Encerra o servico.
+     * Quando removerNotificacao = true, remove a notificacao ativamente (STOP_FOREGROUND_REMOVE).
+     * Quando false, MANTEM a notificacao na barra (STOP_FOREGROUND_DETACH),
+     * para que os botoes continuem disponiveis depois que o som para.
      */
-    private fun finishAlarm() {
-        if (alreadyStopping) return
-        alreadyStopping = true
+    private fun finishAlarm(removerNotificacao: Boolean, reminderId: Int) {
+        if (!alreadyStopping.compareAndSet(false, true)) return
 
         releaseWakeLock()
         soundManager?.stopAlert()
         soundManager = null
 
         if (isForegroundStarted) {
-            stopForeground(STOP_FOREGROUND_DETACH)
+            if (removerNotificacao) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                stopForeground(STOP_FOREGROUND_DETACH)
+            }
+        } else if (removerNotificacao && reminderId != -1) {
+            // O servico nao estava em foreground, entao precisamos remover manualmente
+            NotificationHelper(this).cancelNotification(reminderId)
         }
         stopSelf()
     }

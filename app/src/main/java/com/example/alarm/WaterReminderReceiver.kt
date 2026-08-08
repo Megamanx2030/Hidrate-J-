@@ -1,9 +1,12 @@
 package com.example.alarm
 
+import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.core.content.ContextCompat
+import com.example.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,22 +15,33 @@ import kotlinx.coroutines.launch
 /**
  * Recebe o alarme exato e delega TUDO que demora para o WaterAlarmService.
  *
- * O que mudou em relacao a versao anterior:
+ * SOBRE A TELA AZUL (overlay do AlertOverlay dentro da MainActivity):
  *
- * 1. REMOVIDO o context.startActivity(). Desde o Android 10 iniciar Activity
- *    a partir de background e bloqueado -- aquele bloco nao fazia nada alem
- *    de gastar tempo do orcamento apertado do receiver. Quem abre a tela azul
- *    agora e o setFullScreenIntent da notificacao.
+ * Com o celular BLOQUEADO quem traz a MainActivity para a frente e o
+ * setFullScreenIntent da notificacao, e isso funciona. Com o celular
+ * DESBLOQUEADO o Android NAO honra o full screen intent: ele rebaixa a
+ * notificacao para heads-up. Resultado comprovado em logcat: o alarme tocava,
+ * vibrava e postava a notificacao, mas nao havia nenhuma tentativa de abrir
+ * Activity -- a tela azul nao tinha ninguem para traze-la a frente.
  *
- * 2. REMOVIDO o som/vibracao daqui. Foi para o Foreground Service.
+ * Por isso, com a tela desbloqueada, chamamos startActivity explicitamente.
+ * O alarme e agendado com setAlarmClock, que em tese concede a isencao de
+ * background activity launch, mas varios fabricantes (Motorola, Samsung) nao
+ * honram isso -- por isso a chamada e protegida e registrada no log, e o
+ * setFullScreenIntent CONTINUA sendo o caminho alternativo.
  *
- * 3. O receiver agora so faz duas coisas rapidas: dispara o servico e
- *    reagenda o alarme de amanha.
+ * O som/vibracao ficam no WaterAlarmService (Foreground Service), senao o
+ * processo morre no meio dos 10 segundos.
  */
 class WaterReminderReceiver : BroadcastReceiver() {
 
+    private companion object {
+        const val TAG = "HidrateJa"
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getIntExtra("reminder_id", -1)
+        Log.d(TAG, "Receiver.onReceive reminderId=$reminderId")
         if (reminderId == -1) return
 
         val chimeType = intent.getStringExtra("chime_type") ?: "Sino Suave"
@@ -45,9 +59,13 @@ class WaterReminderReceiver : BroadcastReceiver() {
                 putExtra(WaterAlarmService.EXTRA_TIME, time)
             }
             ContextCompat.startForegroundService(context, serviceIntent)
+            Log.d(TAG, "FGS iniciado OK")
         } catch (e: Exception) {
+            Log.e(TAG, "FGS FALHOU: ${e.javaClass.simpleName}: ${e.message}")
             e.printStackTrace()
         }
+
+        abrirTelaAzulSeDesbloqueado(context, reminderId)
 
         // Reagenda para amanha. E rapido, cabe no goAsync sem risco.
         val pendingResult = goAsync()
@@ -64,6 +82,53 @@ class WaterReminderReceiver : BroadcastReceiver() {
             } finally {
                 pendingResult.finish()
             }
+        }
+    }
+
+    /**
+     * Com a tela BLOQUEADA nao mexemos em nada: o setFullScreenIntent ja
+     * resolve, e esse cenario funciona hoje. Chamar startActivity aqui tambem
+     * so criaria uma segunda transicao concorrente sem ganho nenhum.
+     *
+     * ATENCAO ao ler o log: quando o fabricante barra o background activity
+     * launch, o startActivity normalmente NAO lanca excecao -- o sistema
+     * apenas ignora e registra o bloqueio no logcat do ActivityTaskManager.
+     * Ou seja, "startActivity retornou sem excecao" nao prova que a tela
+     * abriu. A prova esta no log da MainActivity ("MainActivity.handleIntent").
+     */
+    private fun abrirTelaAzulSeDesbloqueado(context: Context, reminderId: Int) {
+        val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        val bloqueado = keyguard?.isKeyguardLocked ?: false
+
+        if (bloqueado) {
+            Log.d(TAG, "Tela bloqueada -> deixando com o setFullScreenIntent")
+            return
+        }
+
+        // A permissao de "aviso por cima" e o que isenta o app do bloqueio de
+        // background activity launch. Sem ela a tentativa quase certamente
+        // sera barrada -- e barrada EM SILENCIO, sem excecao. Registramos o
+        // caminho no log para nao confundir a leitura depois.
+        val podeSobrepor = AlarmPermissionHelper.canDrawOverlays(context)
+        if (podeSobrepor) {
+            Log.d(TAG, "Tela desbloqueada, canDrawOverlays=true -> startActivity com isencao de BAL")
+        } else {
+            Log.w(TAG, "Tela desbloqueada, canDrawOverlays=FALSE -> startActivity deve ser bloqueado; so a notificacao vai aparecer")
+        }
+
+        try {
+            val activityIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("reminder_id", reminderId)
+                putExtra("from_notification", true)
+                putExtra("show_alert", true)
+                putExtra("alert_timestamp", System.currentTimeMillis())
+            }
+            context.startActivity(activityIntent)
+            Log.d(TAG, "startActivity retornou sem excecao (nao garante que abriu; a prova e o MainActivity.handleIntent)")
+        } catch (e: Exception) {
+            Log.e(TAG, "startActivity BLOQUEADO: ${e.javaClass.simpleName}: ${e.message}")
+            e.printStackTrace()
         }
     }
 }

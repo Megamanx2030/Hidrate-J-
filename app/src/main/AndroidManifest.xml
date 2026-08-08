@@ -16,6 +16,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE" />
 
+    <!-- NOVO: e o que faz a tela azul aparecer com o celular DESBLOQUEADO.
+         Comprovado em logcat (08/2026, moto g56, Android 16): sem ela o
+         Android recusa o startActivity vindo do alarme com
+         "Background activity launch blocked" e resultIfPiCreatorAllowsBal=
+         BAL_BLOCK, ou seja, a isencao do setAlarmClock nao valeu neste
+         aparelho. Ter SYSTEM_ALERT_WINDOW e uma isencao de BAL do proprio
+         AOSP, entao o fabricante nao tem como barrar.
+         O usuario concede na mao; sem ela o app continua funcionando,
+         so que a tela azul fica restrita ao celular bloqueado. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- NOVO: permite pedir isencao da otimizacao de bateria.
          ATENCAO: a Play Store exige justificativa para esta permissao.
          Se for publicar, veja a observacao no README. -->
