@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.R
 
 class NotificationHelper(private val context: Context) {
 
@@ -144,7 +145,10 @@ class NotificationHelper(private val context: Context) {
         // o celular bloqueado o proprio Android abre a MainActivity e a tela
         // azul aparece mesmo assim -- foi o que o logcat mostrou as 22:19.
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            // Era o ic_popup_reminder, o sininho padrao do Android: na barra de
+            // status o app ficava igual a qualquer outro lembrete. Agora e a
+            // jarra com o copo, a mesma marca do icone e da tela inicial.
+            .setSmallIcon(R.drawable.ic_notificacao_jarra)
             .setContentTitle("💧 $title")
             .setContentText("Hora de beber água! São $time")
             .setStyle(
