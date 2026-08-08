@@ -116,15 +116,36 @@ fun HomeScreen(
     val monthlyTargetLiters = String.format("%.1f", settings.monthlyGoalLiters)
     val monthlyRemainingLiters = String.format("%.1f", ((monthlyGoalMl - monthlyTotalMl).coerceAtLeast(0)) / 1000f)
 
+    val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+
+    /**
+     * O "Proximo lembrete" congelava.
+     *
+     * O remember dependia so da lista, e a hora era lida DENTRO do bloco.
+     * Enquanto os lembretes nao mudassem, o texto nunca era recalculado --
+     * o app ficava anunciando um horario que ja tinha passado.
+     *
+     * Agora a hora atual e estado, atualizado a cada 30s. O recalculo so
+     * acontece quando o minuto vira, porque a chave e a string "HH:mm".
+     */
+    var currentHHmm by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(
+            java.time.LocalTime.now(spZone).let { String.format("%02d:%02d", it.hour, it.minute) }
+        )
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000)
+            currentHHmm = java.time.LocalTime.now(spZone)
+                .let { String.format("%02d:%02d", it.hour, it.minute) }
+        }
+    }
+
     // Calculate next upcoming reminder in São Paulo time
-    val nextReminderText = androidx.compose.runtime.remember(reminders) {
+    val nextReminderText = androidx.compose.runtime.remember(reminders, currentHHmm) {
         if (reminders.isEmpty()) {
             "Nenhum agendado"
         } else {
-            val spZone = java.time.ZoneId.of("America/Sao_Paulo")
-            val nowSp = java.time.LocalTime.now(spZone)
-            val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
-
             val upcoming = reminders.sortedBy { it.time }.firstOrNull { it.time > currentHHmm }
             if (upcoming != null) {
                 "às ${upcoming.time} - ${upcoming.title}"

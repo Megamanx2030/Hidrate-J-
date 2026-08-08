@@ -87,7 +87,23 @@ fun HistoryScreen(
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
     )
-    val currentLocalDate = remember { LocalDate.now(spZoneId) }
+    /**
+     * A data era lida uma vez so, com remember { }. Com o app aberto virando
+     * a meia-noite, o historico continuava mostrando a semana do dia anterior
+     * ate o usuario fechar e reabrir.
+     *
+     * Agora ela e estado e e reavaliada a cada minuto. A recomposicao so
+     * acontece quando o dia realmente muda.
+     */
+    var currentLocalDate by remember { mutableStateOf(LocalDate.now(spZoneId)) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            val hoje = LocalDate.now(spZoneId)
+            if (hoje != currentLocalDate) currentLocalDate = hoje
+        }
+    }
+
     var selectedMonthIndex by remember { mutableStateOf(currentLocalDate.monthValue - 1) }
     var selectedYear by remember { mutableStateOf(currentLocalDate.year) }
 
@@ -106,7 +122,7 @@ fun HistoryScreen(
     }
 
     // Calendar week data for the chart and list (Sunday to Saturday)
-    val pastDaysData = remember(logs, dailyGoalMl, selectedMonthIndex, selectedYear) {
+    val pastDaysData = remember(logs, dailyGoalMl, selectedMonthIndex, selectedYear, currentLocalDate) {
         val list = mutableListOf<Triple<String, String, List<WaterLog>>>() // (formattedDateStr, dateKey, dayLogs)
         val cal = Calendar.getInstance(spTimeZone)
         cal.set(Calendar.YEAR, selectedYear)
