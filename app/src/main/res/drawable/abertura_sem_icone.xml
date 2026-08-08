@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Icone "vazio" da tela de abertura do sistema.
+
+    O splash do proprio Android so sabe mostrar uma imagem parada dentro de um
+    circulo pequeno no meio da tela, e era ele que deixava a logo miuda. Deixando
+    esse espaco transparente, o sistema pinta so o fundo azul; logo em seguida a
+    AberturaAnimada entra com o MESMO fundo e a jarra em tamanho grande, entao o
+    usuario nao percebe a troca.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+</shape>

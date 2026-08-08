@@ -150,6 +150,23 @@ class WaterAlarmService : Service() {
         acquireWakeLock()
 
         scope.launch {
+            // ALARME ORFAO: lembrete apagado cujo alarme continuou armado.
+            // Sem esta conferencia o app tocava e abria a tela azul para um
+            // horario que nao existe mais na lista do usuario.
+            val lembreteExiste = try {
+                AppDatabase.getDatabase(applicationContext)
+                    .reminderDao().getAllRemindersOnce().any { it.id == reminderId }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                true // na duvida, avisa: perder um lembrete e pior que avisar demais
+            }
+            if (!lembreteExiste) {
+                android.util.Log.w("HidrateJa", "Lembrete $reminderId nao existe mais: alarme ignorado")
+                DisparoAlarmePrefs.limpar(applicationContext)
+                finishAlarm(removerNotificacao = true, reminderId = reminderId)
+                return@launch
+            }
+
             val settings = try {
                 AppDatabase.getDatabase(applicationContext).userSettingsDao().getSettingsOnce()
             } catch (e: Exception) {

@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    O foreground agora e a arte da jarra em "full bleed": ele preenche os
+    108dp inteiros e ja traz o proprio degrade de fundo, do mesmo jeito que o
+    Instagram, o Inter e o iFood fazem. Por isso o background abaixo quase
+    nunca aparece: ele fica so como cor de seguranca.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background"/>
     <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-    <monochrome android:drawable="@mipmap/ic_launcher_foreground"/>
+    <monochrome android:drawable="@drawable/ic_launcher_monocromatico"/>
 </adaptive-icon>

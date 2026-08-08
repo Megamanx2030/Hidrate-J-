@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,11 +30,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.ModeNight
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
@@ -87,39 +92,28 @@ fun HomeScreen(
     val dailyProgress = (todayTotalMl.toFloat() / dailyGoalMl.toFloat()).coerceIn(0f, 1f)
 
     /**
-     * NUMERO NA TELA NAO PODE MENTIR.
+     * BRINCAR COM A JARRA E LIVRE, E NAO REGISTRA NADA.
      *
-     * Antes, tocar no copo enchia a agua ate 100% enquanto o "%" logo abaixo
-     * continuava no valor real. Copo cheio com "20%" embaixo e leitura errada
-     * -- e um idoso que leia "100%" no segundo errado pode parar de beber
-     * agua no dia.
+     * Enquanto o dedo estiver encostado, a agua sobe ate encher. Assim que
+     * solta, ela desce sozinha ate o nivel de verdade -- o que a pessoa bebeu
+     * e marcou no lembrete.
      *
-     * Agora a agua sobe no maximo 10% acima do nivel real e volta sozinha
-     * depois de 4 segundos. O toque continua dando resposta visual, e nenhum
-     * numero da tela muda: eles vem sempre de todayTotalMl.
+     * O cuidado que motivou o limite anterior (10% acima do real, voltando
+     * depois de 4 segundos) continua valendo: NUMERO NA TELA NAO PODE MENTIR.
+     * So que ele nao precisa ser resolvido travando a agua. Os numeros logo
+     * abaixo vem sempre de todayTotalMl e nao se mexem, e enquanto o dedo esta
+     * na jarra a frase de apoio avisa, com todas as letras, que aquilo e so
+     * uma brincadeira.
      */
-    val TETO_ANIMACAO = 0.10f
+    var jarraPressionada by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
-    var dummyProgress by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(dailyProgress) }
-    var touchCount by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(0) }
-
-    androidx.compose.runtime.LaunchedEffect(dailyProgress) {
-        if (touchCount == 0) {
-            dummyProgress = dailyProgress
-        }
-    }
-
-    androidx.compose.runtime.LaunchedEffect(touchCount) {
-        if (touchCount > 0) {
-            kotlinx.coroutines.delay(4000)
-            dummyProgress = dailyProgress
-            touchCount = 0
-        }
-    }
-
-    val animatedDummyProgress by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = dummyProgress,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 1000)
+    val nivelDaJarra by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (jarraPressionada) 1f else dailyProgress,
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = if (jarraPressionada) 2200 else 900,
+            easing = androidx.compose.animation.core.FastOutSlowInEasing
+        ),
+        label = "nivel_jarra"
     )
 
     val monthlyGoalMl = (settings.monthlyGoalLiters * 1000).toInt().coerceAtLeast(1)
@@ -184,8 +178,8 @@ fun HomeScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                com.example.ui.components.MiniWaterGlassIcon(
-                    modifier = Modifier.size(28.dp),
+                com.example.ui.components.MiniJarraECopo(
+                    size = 32.dp,
                     fillRatio = 0.5f
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -195,21 +189,6 @@ fun HomeScreen(
                     color = PrimaryBlue,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1
-                )
-            }
-            IconButton(
-                onClick = onOpenSettings,
-                modifier = Modifier
-                    // 48dp e o minimo recomendado de alvo de toque; estava 44dp.
-                    .size(48.dp)
-                    .background(Color.White, CircleShape)
-                    .testTag("settings_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Editar Configurações",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(28.dp)
                 )
             }
         }
@@ -225,87 +204,200 @@ fun HomeScreen(
             text = "Vamos manter a hidratação hoje.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 20.dp)
+            modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        // Glass Fill Animation Component
-        Box(
+        /**
+         * ERA UM LAPIS SOZINHO NO CANTO, SEM NOME.
+         *
+         * Icone sem rotulo obriga a pessoa a adivinhar, e quem nao adivinha
+         * nunca abre os ajustes: fica para sempre com a meta e o copo que
+         * vieram de fabrica.
+         *
+         * Virou a linha de ajuste que todo mundo ja conhece do proprio Android
+         * -- icone redondo, titulo, subtitulo e a setinha da direita. E o
+         * subtitulo mostra os VALORES DE AGORA: alem de dizer onde se mexe, ele
+         * ja responde "quanto esta valendo hoje" sem precisar abrir.
+         */
+        val metaLitrosStr = String.format(java.util.Locale("pt", "BR"), "%.1f", dailyGoalMl / 1000f)
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            contentAlignment = Alignment.Center
+                .padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(18.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            com.example.ui.components.AnimatedWaterGlass(
-                progress = animatedDummyProgress,
+            Row(
                 modifier = Modifier
-                    .size(260.dp, 260.dp)
-                    .clickable(
-                        interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
-                            // Sobe ate o teto e volta sozinho. Cada toque
-                            // reinicia a contagem dos 4 segundos.
-                            touchCount++
-                            dummyProgress = (dailyProgress + TETO_ANIMACAO).coerceAtMost(1f)
-                        }
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenSettings)
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                    .testTag("settings_button"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(PrimaryContainer, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(30.dp)
                     )
-            )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Configurar",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Meta: $metaLitrosStr L  ·  Copo: ${settings.glassSizeMl} ml",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "Abrir configurações",
+                    tint = PrimaryBlue,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        /**
+         * A JARRA E OS NUMEROS DELA MORAM NO MESMO CARTAO.
+         *
+         * Antes o desenho e as frases ficavam soltos sobre o fundo azul, um
+         * embaixo do outro, sem nada dizendo que aquilo era um bloco so. Num
+         * app para idoso isso pesa: a pessoa nao sabe onde uma informacao
+         * comeca e a outra acaba.
+         *
+         * Agora e um cartao branco unico -- desenho, porcentagem, barra e as
+         * duas frases -- do mesmo jeito que os cartoes de lembrete logo abaixo.
+         * A tela inteira passa a ser uma pilha de blocos, que e o que se le
+         * mais rapido.
+         */
+        val ptBR = java.util.Locale("pt", "BR")
+        val bebidoL = String.format(ptBR, "%.1f", todayTotalMl / 1000f)
+        val faltaMl = (dailyGoalMl - todayTotalMl).coerceAtLeast(0)
+        val coposQueFaltam = ((faltaMl + glassSizeMl - 1) / glassSizeMl).coerceAtLeast(0)
+        val metaAlcancada = todayTotalMl >= dailyGoalMl
 
-        // Progress Text Below Glass
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(22.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Text(
-                text = "${(dailyProgress * 100).toInt()}%",
-                style = MaterialTheme.typography.headlineLarge,
-                color = PrimaryBlue,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 42.sp
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            val currentLitersStr = String.format(java.util.Locale("pt", "BR"), "%.1fL", todayTotalMl / 1000f)
-            val goalLitersStr = String.format(java.util.Locale("pt", "BR"), "%.1fL", dailyGoalMl / 1000f)
-            Text(
-                text = "$currentLitersStr / $goalLitersStr",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "$cupsDrunk de $totalCupsTarget copos",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Medida atual: ${settings.glassSizeMl}ml",
-                style = MaterialTheme.typography.bodyLarge,
-                color = PrimaryBlue,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Toque no copo para ver a água subir",
-                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Seu consumo é registrado no lembrete",
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 16.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Medium
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                com.example.ui.components.JarraDeAguaAnimada(
+                    progresso = nivelDaJarra,
+                    modifier = Modifier
+                        .size(230.dp, 230.dp)
+                        // onPress + tryAwaitRelease em vez de clickable: aqui
+                        // interessa o dedo ENCOSTADO, nao o toque completo. Com
+                        // clickable a agua so reagiria depois de soltar.
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    jarraPressionada = true
+                                    tryAwaitRelease()
+                                    jarraPressionada = false
+                                }
+                            )
+                        }
+                )
+
+                Text(
+                    text = "${(dailyProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = PrimaryBlue,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 46.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Barra desenhada com duas caixas em vez do
+                // LinearProgressIndicator: a altura e o arredondamento ficam
+                // exatamente como se quer, e o desenho e o mesmo em qualquer
+                // versao do Material.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(16.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SecondaryContainer)
+                ) {
+                    if (dailyProgress > 0.001f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(dailyProgress)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (metaAlcancada) com.example.ui.theme.SuccessGreen else PrimaryBlue
+                                )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Você bebeu $bebidoL L de $metaLitrosStr L hoje",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (metaAlcancada)
+                        "Parabéns, você bateu a meta de hoje!"
+                    else
+                        "Faltam $coposQueFaltam copo(s) de ${settings.glassSizeMl} ml",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (metaAlcancada) com.example.ui.theme.SuccessGreen else PrimaryBlue,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                androidx.compose.material3.HorizontalDivider(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    thickness = 1.dp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = if (jarraPressionada)
+                        "É só uma brincadeira, nada foi registrado"
+                    else
+                        "Segure o dedo na jarra para ver a água subir",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (jarraPressionada) com.example.ui.theme.CyanAction
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
         // Next Reminder Card
         Card(
             modifier = Modifier.fillMaxWidth(),

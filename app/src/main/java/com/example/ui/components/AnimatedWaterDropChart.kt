@@ -117,7 +117,7 @@ fun AnimatedWaterDropChart(
                 }
 
                 Box(modifier = glassModifier) {
-                    com.example.ui.components.MiniWaterGlassIcon(
+                    com.example.ui.components.MiniJarraECopo(
                         size = 44.dp,
                         fillRatio = fill
                     )

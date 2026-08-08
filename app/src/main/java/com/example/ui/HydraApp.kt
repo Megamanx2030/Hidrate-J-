@@ -46,7 +46,8 @@ fun HydraApp(viewModel: MainViewModel) {
     val todayTotalMl by viewModel.todayTotalMl.collectAsStateWithLifecycle()
     val monthlyTotalMl by viewModel.monthlyTotalMl.collectAsStateWithLifecycle()
     val reminders by viewModel.allReminders.collectAsStateWithLifecycle()
-    val allLogs by viewModel.allLogs.collectAsStateWithLifecycle()
+    val logsDoPeriodo by viewModel.logsDoPeriodo.collectAsStateWithLifecycle()
+    val totalDeRegistros by viewModel.totalDeRegistros.collectAsStateWithLifecycle()
 
     val isAlertVisible by viewModel.isAlertVisible.collectAsStateWithLifecycle()
     val countdownSeconds by viewModel.countdownSeconds.collectAsStateWithLifecycle()
@@ -83,7 +84,14 @@ fun HydraApp(viewModel: MainViewModel) {
                         label = {
                             Text(
                                 text = "Início",
-                                style = MaterialTheme.typography.labelLarge,
+                                // labelLarge (20sp) nao cabe na largura de um
+                                // terco de tela: com a fonte do sistema
+                                // aumentada, "Lembretes" quebrava em
+                                // "Lembrete" / "s". labelMedium continua
+                                // grande para um app de idoso e cabe inteiro.
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false,
                                 fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal
                             )
                         },
@@ -109,7 +117,14 @@ fun HydraApp(viewModel: MainViewModel) {
                         label = {
                             Text(
                                 text = "Histórico",
-                                style = MaterialTheme.typography.labelLarge,
+                                // labelLarge (20sp) nao cabe na largura de um
+                                // terco de tela: com a fonte do sistema
+                                // aumentada, "Lembretes" quebrava em
+                                // "Lembrete" / "s". labelMedium continua
+                                // grande para um app de idoso e cabe inteiro.
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false,
                                 fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal
                             )
                         },
@@ -135,7 +150,14 @@ fun HydraApp(viewModel: MainViewModel) {
                         label = {
                             Text(
                                 text = "Lembretes",
-                                style = MaterialTheme.typography.labelLarge,
+                                // labelLarge (20sp) nao cabe na largura de um
+                                // terco de tela: com a fonte do sistema
+                                // aumentada, "Lembretes" quebrava em
+                                // "Lembrete" / "s". labelMedium continua
+                                // grande para um app de idoso e cabe inteiro.
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                softWrap = false,
                                 fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal
                             )
                         },
@@ -165,12 +187,19 @@ fun HydraApp(viewModel: MainViewModel) {
                         onOpenSettings = { viewModel.openSettingsDialog() }
                     )
                     1 -> HistoryScreen(
-                        logs = allLogs,
+                        logs = logsDoPeriodo,
                         reminders = reminders,
                         dailyGoalMl = settings.dailyGoalMl,
+                        totalDeRegistros = totalDeRegistros,
                         onClearHistory = { viewModel.clearHistory() },
                         onClearEverything = { viewModel.clearEverything() },
                         onApagarConsumoDoDia = { dateKey -> viewModel.apagarConsumoDoDia(dateKey) },
+                        onApagarConsumoDoPeriodo = { inicio, fim ->
+                            viewModel.apagarConsumoDoPeriodo(inicio, fim)
+                        },
+                        onPeriodoMudou = { inicio, fim ->
+                            viewModel.definirPeriodoHistorico(inicio, fim)
+                        },
                         onLimparRegistroEsquecido = { reminder -> viewModel.limparRegistroEsquecido(reminder) }
                     )
                     2 -> RemindersScreen(

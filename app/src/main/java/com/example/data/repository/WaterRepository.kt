@@ -39,7 +39,11 @@ class WaterRepository(
         it ?: UserSettings()
     }
 
-    val allLogs: Flow<List<WaterLog>> = waterLogDao.getAllLogs()
+    /** O Historico pede so os dias que esta mostrando. Ver WaterLogDao. */
+    fun getLogsForDateRange(inicio: String, fim: String): Flow<List<WaterLog>> =
+        waterLogDao.getLogsForDateRange(inicio, fim)
+
+    val totalDeRegistros: Flow<Int> = waterLogDao.contarLogs()
 
     fun getTodayLogs(): Flow<List<WaterLog>> {
         return waterLogDao.getLogsForDate(getTodayDateString())

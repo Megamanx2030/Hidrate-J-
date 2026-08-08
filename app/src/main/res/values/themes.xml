@@ -3,10 +3,15 @@
 
     <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar" />
     
+    <!--
+        O splash do sistema agora e so o fundo azul, sem icone: quem mostra a
+        marca e a AberturaAnimada, em Compose, com a jarra grande e a agua
+        subindo. O fundo aqui e EXATAMENTE a mesma cor do FundoAbertura
+        (Color(0xFFB4E4F3)) para a troca das duas telas nao piscar.
+    -->
     <style name="Theme.HidrateJa.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#9FDFF0</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
-        <item name="windowSplashScreenAnimationDuration">800</item>
+        <item name="windowSplashScreenBackground">#B4E4F3</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/abertura_sem_icone</item>
         <item name="postSplashScreenTheme">@style/Theme.MyApplication</item>
     </style>
 </resources>

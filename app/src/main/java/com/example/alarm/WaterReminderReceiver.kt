@@ -48,6 +48,10 @@ class WaterReminderReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra("title") ?: "Hora da Água"
         val time = intent.getStringExtra("time") ?: ""
 
+        // Marca que ESTE alarme tocou. E a unica prova aceita pelo app para
+        // abrir a tela azul depois -- ver DisparoAlarmePrefs.
+        DisparoAlarmePrefs.registrar(context, reminderId)
+
         // Dispara o servico IMEDIATAMENTE e de forma sincrona.
         // Nao pode ir para dentro de coroutine: o Android exige que o FGS
         // seja iniciado ainda dentro da janela de execucao do receiver.
@@ -71,12 +75,25 @@ class WaterReminderReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                AlarmScheduler(context).rescheduleReminderForTomorrow(
-                    reminderId = reminderId,
-                    time = time,
-                    chimeType = chimeType,
-                    title = title
-                )
+                // ALARME ORFAO: se o lembrete foi apagado, o alarme dele podia
+                // continuar disparando todo dia -- e era um dos jeitos da tela
+                // azul aparecer "sem horario marcado". Reagendar so quando o
+                // lembrete ainda existe corta a corrente de vez.
+                val existe = com.example.data.db.AppDatabase.getDatabase(context)
+                    .reminderDao().getAllRemindersOnce().any { it.id == reminderId }
+
+                if (existe) {
+                    AlarmScheduler(context).rescheduleReminderForTomorrow(
+                        reminderId = reminderId,
+                        time = time,
+                        chimeType = chimeType,
+                        title = title
+                    )
+                } else {
+                    Log.w(TAG, "Lembrete $reminderId nao existe mais: cancelando o alarme orfao")
+                    AlarmScheduler(context).cancelReminder(reminderId)
+                    DisparoAlarmePrefs.limpar(context)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {

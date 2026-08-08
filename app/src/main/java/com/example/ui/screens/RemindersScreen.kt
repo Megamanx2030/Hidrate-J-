@@ -69,6 +69,50 @@ import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.SecondaryContainer
 
+/**
+ * Chave liga/desliga com a palavra do estado EMBAIXO, nao ao lado.
+ *
+ * Antes era "Ligado" / "Desl." lado a lado com a chave. O "Desl." abreviado
+ * existia so porque a palavra inteira nao cabia -- e num app para idoso
+ * abreviacao e o pior desfecho possivel: quem le "Desl." nao tem certeza do que
+ * esta valendo.
+ *
+ * Empilhado, a coluna fica MAIS ESTREITA do que a versao lado a lado (a largura
+ * passa a ser a da maior das duas coisas, e nao a soma), entao sobra mais espaco
+ * para o titulo a esquerda e ainda cabe "Desligado" por extenso. Isso resolve
+ * tambem o corte que aparecia no Samsung, onde a fonte do sistema e maior.
+ */
+@Composable
+private fun EstadoDoInterruptor(
+    ligado: Boolean,
+    onMudou: (Boolean) -> Unit,
+    testTag: String? = null
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(start = 8.dp)
+    ) {
+        Switch(
+            checked = ligado,
+            onCheckedChange = onMudou,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = PrimaryBlue
+            ),
+            modifier = if (testTag != null) Modifier.testTag(testTag) else Modifier
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = if (ligado) "Ligado" else "Desligado",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (ligado) PrimaryBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false
+        )
+    }
+}
+
 @Composable
 fun RemindersScreen(
     settings: UserSettings,
@@ -88,6 +132,19 @@ fun RemindersScreen(
     var isNewReminder by remember { mutableStateOf(false) }
 
     val chimeOptions = listOf("Sino Suave", "Gota D'Água", "Harpa Melódica", "Sino de Cristal")
+
+    // Datas de referencia para escrever "hoje" e "amanhã" no lugar de
+    // "09/08/2026". Mesmo formato e mesmo fuso que o resto do app grava.
+    val hojeStr = remember {
+        val zona = java.time.ZoneId.of("America/Sao_Paulo")
+        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            .format(java.time.LocalDate.now(zona))
+    }
+    val amanhaStr = remember {
+        val zona = java.time.ZoneId.of("America/Sao_Paulo")
+        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            .format(java.time.LocalDate.now(zona).plusDays(1))
+    }
 
     Column(
         modifier = Modifier
@@ -140,27 +197,11 @@ fun RemindersScreen(
                         )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 4.dp)
-                    ) {
-                        Switch(
-                            checked = settings.alertsEnabled,
-                            onCheckedChange = onToggleAlerts,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = PrimaryBlue
-                            ),
-                            modifier = Modifier.testTag("alert_toggle_switch")
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (settings.alertsEnabled) "Ligado" else "Desl.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (settings.alertsEnabled) PrimaryBlue else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    EstadoDoInterruptor(
+                        ligado = settings.alertsEnabled,
+                        onMudou = onToggleAlerts,
+                        testTag = "alert_toggle_switch"
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -186,26 +227,10 @@ fun RemindersScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 4.dp)
-                    ) {
-                        Switch(
-                            checked = settings.vibrateOnly,
-                            onCheckedChange = onToggleVibrateOnly,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = PrimaryBlue
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (settings.vibrateOnly) "Ligado" else "Desl.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (settings.vibrateOnly) PrimaryBlue else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    EstadoDoInterruptor(
+                        ligado = settings.vibrateOnly,
+                        onMudou = onToggleVibrateOnly
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -258,11 +283,14 @@ fun RemindersScreen(
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
+                        // Sem maxLines = 1: com a fonte do sistema aumentada o
+                        // rotulo virava "Testar Campainha e Vibra...". Quebrar
+                        // em duas linhas mostra a frase toda.
                         Text(
                             text = "Testar Campainha e Vibração",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
@@ -314,9 +342,7 @@ fun RemindersScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (isSelected) PrimaryBlue else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                modifier = Modifier.weight(1f)
                             )
 
                             Spacer(modifier = Modifier.width(8.dp))
@@ -331,7 +357,11 @@ fun RemindersScreen(
                                 contentPadding = ButtonDefaults.ContentPadding
                             ) {
                                 Text(
-                                    text = if (isSelected) "Selecionado" else "Ouvir / Escolher",
+                                    // "Ouvir / Escolher" era a maior etiqueta da
+                                    // tela e empurrava o nome da campainha para
+                                    // fora. "Ouvir" diz a mesma coisa e devolve
+                                    // o espaco para o nome.
+                                    text = if (isSelected) "Selecionado" else "Ouvir",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -444,24 +474,37 @@ fun RemindersScreen(
                     )
                 }
 
+                // AS FRASES LONGAS FICAM NUMA FAIXA SO DELAS.
+                //
+                // Antes o horario, o titulo, o estado e a data disputavam a
+                // mesma linha com os dois botoes. No Motorola cabia; no Samsung,
+                // que roda com fonte e tela maiores, sobravam menos de 100dp
+                // para o texto e as frases saiam cortadas: "Esqueceu de b...",
+                // "Data: 09/08/20...". Nenhum ajuste de tamanho resolveria isso
+                // para sempre -- o usuario pode aumentar a fonte a qualquer
+                // momento, e num app para idoso ele provavelmente VAI aumentar.
+                //
+                // Divisao atual: horario, titulo e botoes na primeira linha
+                // (o titulo ocupa a sobra do meio, que senao ficaria branca);
+                // estado e data na linha de baixo, usando a largura inteira do
+                // cartao. As frases compridas nunca mais competem por espaco.
                 reminders.forEachIndexed { index, reminder ->
-                    Row(
+                    val timeParts = reminder.time.split(":")
+                    val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 0
+                    val isDay = hour in 6..17
+                    val timeIcon = if (isDay) Icons.Default.WbSunny else Icons.Default.ModeNight
+                    val timeIconColor = if (isDay) Color(0xFFFFC107) else Color(0xFF90CAF9)
+                    val timeDesc = if (isDay) "Horário da manhã" else "Horário da noite"
+
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val timeParts = reminder.time.split(":")
-                            val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 0
-                            val isDay = hour in 6..17
-                            val timeIcon = if (isDay) Icons.Default.WbSunny else Icons.Default.ModeNight
-                            val timeIconColor = if (isDay) Color(0xFFFFC107) else Color(0xFF90CAF9)
-                            val timeDesc = if (isDay) "Horário da manhã" else "Horário da noite"
-                            
                             Icon(
                                 imageVector = timeIcon,
                                 contentDescription = timeDesc,
@@ -474,7 +517,7 @@ fun RemindersScreen(
                             Box(
                                 modifier = Modifier
                                     .widthIn(min = 76.dp)
-                                    .height(36.dp)
+                                    .heightIn(min = 36.dp)
                                     .then(
                                         if (reminder.isCompleted) {
                                             Modifier.background(PrimaryBlue, RoundedCornerShape(18.dp))
@@ -492,97 +535,35 @@ fun RemindersScreen(
                                     color = if (reminder.isCompleted) Color.White else PrimaryBlue,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 10.dp)
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
 
+                            // O titulo fica AQUI, na sobra ao lado do horario.
+                            // Numa linha propria ele deixava uma faixa branca
+                            // vazia atravessando o cartao inteiro.
                             Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = reminder.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
 
-                            Column {
-                                Text(
-                                    text = reminder.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 2
-                                )
-
-                                // AS DUAS INFORMACOES CONVIVEM.
-                                //
-                                // Antes era um when: marcar o circulo fazia o
-                                // "Esqueceu de beber" desaparecer, como se o
-                                // lembrete nunca tivesse sido perdido. O dado
-                                // continuava no banco (o skippedTime nao e
-                                // apagado), so nao era mostrado.
-                                //
-                                // Agora, se o lembrete foi esquecido E depois
-                                // bebido, as duas linhas aparecem juntas.
-                                val foiEsquecido = reminder.isSkipped || reminder.skippedTime.isNotBlank()
-                                val horaEsquecido = reminder.skippedTime.ifBlank { reminder.time }
-                                val horaBebido = reminder.completedTime.ifBlank { reminder.time }
-
-                                if (reminder.isCompleted) {
-                                    Text(
-                                        text = "Bebido às $horaBebido",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = PrimaryBlue,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                if (foiEsquecido) {
-                                    Text(
-                                        text = "Esqueceu de beber às $horaEsquecido",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = ErrorRed,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                if (!reminder.isCompleted && !foiEsquecido) {
-                                    Text(
-                                        text = "Pendente",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                if (reminder.date.isNotBlank()) {
-                                    Text(
-                                        text = "Data: ${reminder.date}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                        
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
                             IconButton(
                                 onClick = { onToggleCompleted(reminder) },
-                                modifier = Modifier.size(44.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
                                     imageVector = if (reminder.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                                     contentDescription = if (reminder.isCompleted) "Desmarcar" else "Marcar que bebeu água",
                                     tint = PrimaryBlue,
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
-                            
-                            Spacer(modifier = Modifier.width(4.dp))
 
                             IconButton(
                                 onClick = {
@@ -590,15 +571,92 @@ fun RemindersScreen(
                                     isNewReminder = false
                                     showEditDialog = true
                                 },
-                                modifier = Modifier.size(44.dp)
+                                modifier = Modifier.size(48.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Edit,
                                     contentDescription = "Editar horário",
                                     tint = PrimaryBlue,
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
+                        }
+
+                        // AS DUAS INFORMACOES CONVIVEM.
+                        //
+                        // Antes era um when: marcar o circulo fazia o
+                        // "Esqueceu de beber" desaparecer, como se o
+                        // lembrete nunca tivesse sido perdido. O dado
+                        // continuava no banco (o skippedTime nao e
+                        // apagado), so nao era mostrado.
+                        //
+                        // Agora, se o lembrete foi esquecido E depois
+                        // bebido, as duas linhas aparecem juntas.
+                        val foiEsquecido = reminder.isSkipped || reminder.skippedTime.isNotBlank()
+                        val horaEsquecido = reminder.skippedTime.ifBlank { reminder.time }
+                        val horaBebido = reminder.completedTime.ifBlank { reminder.time }
+
+                        // "hoje" em vez da data inteira: as duas coisas ficam
+                        // no MESMO dia (o status e zerado na virada), entao
+                        // repetir "09/08/2026" so gastava linha. Quando por
+                        // algum motivo a data nao for a de hoje, ela aparece
+                        // curta (dd/MM), sem o ano.
+                        val diaEsquecido = when {
+                            reminder.skippedDate.isBlank() -> "hoje"
+                            reminder.skippedDate == hojeStr -> "hoje"
+                            else -> "em ${reminder.skippedDate.take(5)}"
+                        }
+
+                        if (reminder.isCompleted) {
+                            Text(
+                                text = "Bebido hoje às $horaBebido",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = PrimaryBlue,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        if (foiEsquecido) {
+                            Text(
+                                text = "Esqueceu $diaEsquecido às $horaEsquecido",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ErrorRed,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        if (!reminder.isCompleted && !foiEsquecido) {
+                            Text(
+                                text = "Ainda não bebeu",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        /**
+                         * "Data: 09/08/2026" ERA A INFORMACAO MAIS ENGANOSA DA
+                         * TELA.
+                         *
+                         * Parecia a data do registro que estava logo acima --
+                         * "esqueceu de beber às 16:03" e, embaixo, uma data de
+                         * amanha. Na verdade esse campo guarda a PROXIMA vez
+                         * que o alarme toca. Dizer isso com todas as letras, e
+                         * so o dia (nunca o ano), resolve a leitura e ainda
+                         * encurta a linha.
+                         */
+                        val proximoToque = when {
+                            reminder.date.isBlank() -> null
+                            reminder.date == hojeStr -> "Toca hoje"
+                            reminder.date == amanhaStr -> "Toca de novo amanhã"
+                            else -> "Toca em ${reminder.date.take(5)}"
+                        }
+                        if (proximoToque != null) {
+                            Text(
+                                text = proximoToque,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }

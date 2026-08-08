@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -67,11 +68,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
-    val allLogs: StateFlow<List<WaterLog>> = repository.allLogs
+    /**
+     * O periodo que a tela de Historico esta mostrando, em "yyyy-MM-dd".
+     *
+     * Padrao: os ultimos 7 dias, o mesmo que a tela abre mostrando.
+     */
+    private val _periodoHistorico = MutableStateFlow(periodoPadrao())
+    val periodoHistorico: StateFlow<Pair<String, String>> = _periodoHistorico.asStateFlow()
+
+    fun definirPeriodoHistorico(inicio: String, fim: String) {
+        val novo = inicio to fim
+        if (_periodoHistorico.value != novo) _periodoHistorico.value = novo
+    }
+
+    private fun periodoPadrao(): Pair<String, String> {
+        val zona = java.time.ZoneId.of("America/Sao_Paulo")
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        val hoje = java.time.LocalDate.now(zona)
+        return hoje.minusDays(6).format(fmt) to hoje.format(fmt)
+    }
+
+    /**
+     * So os registros do periodo mostrado.
+     *
+     * Antes era um allLogs com a tabela inteira, reemitido a cada copo de agua
+     * registrado. Ver o comentario do WaterLogDao.getLogsForDateRange.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val logsDoPeriodo: StateFlow<List<WaterLog>> = _periodoHistorico
+        .flatMapLatest { (inicio, fim) -> repository.getLogsForDateRange(inicio, fim) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
+        )
+
+    /** Quantos registros existem no total. Usado no aviso do botao Limpar. */
+    val totalDeRegistros: StateFlow<Int> = repository.totalDeRegistros
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
         )
 
     // Alert Overlay state
@@ -123,32 +160,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Create notification channel early
         NotificationHelper(application)
 
-        // Verificador em primeiro plano: so abre o overlay com o app aberto.
-        // Som e vibracao sao do AlarmManager + WaterAlarmService.
+        // Verificador de 3 em 3 segundos, rede de seguranca para quando o
+        // AlarmManager atrasa com o app JA ABERTO na frente do usuario.
+        // Som e vibracao continuam sendo do AlarmManager + WaterAlarmService.
+        //
+        // A checagem de primeiro plano e parte da correcao da tela azul: o
+        // viewModelScope nao morre quando o app vai para segundo plano, entao
+        // este laco continuava rodando escondido e marcava _isAlertVisible.
+        // Resultado: o usuario voltava ao app minutos (ou horas) depois e dava
+        // de cara com a tela azul ja aberta, sem nada ter tocado.
         viewModelScope.launch {
             var lastTriggeredMinute: String? = null
             val spZone = java.time.ZoneId.of("America/Sao_Paulo")
             while (true) {
                 delay(3000)
-                if (!_isAlertVisible.value) {
-                    val nowSp = java.time.LocalTime.now(spZone)
-                    val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
+                if (!_appEmPrimeiroPlano.value) continue
+                if (_isAlertVisible.value) continue
 
-                    if (currentHHmm != lastTriggeredMinute) {
-                        val matchingReminder = allReminders.value
-                            .find { it.time == currentHHmm && !it.isCompleted && !it.isSkipped }
-                        if (matchingReminder != null) {
-                            lastTriggeredMinute = currentHHmm
-                            android.util.Log.d(
-                                "HidrateJa",
-                                "Poll 3s encontrou lembrete ${matchingReminder.id} em $currentHHmm"
-                            )
-                            triggerWaterAlert(matchingReminder.id, playMedia = false)
-                        }
+                val nowSp = java.time.LocalTime.now(spZone)
+                val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
+
+                if (currentHHmm != lastTriggeredMinute) {
+                    val matchingReminder = allReminders.value
+                        .find { it.time == currentHHmm && !it.isCompleted && !it.isSkipped }
+                    if (matchingReminder != null) {
+                        lastTriggeredMinute = currentHHmm
+                        android.util.Log.d(
+                            "HidrateJa",
+                            "Poll 3s encontrou lembrete ${matchingReminder.id} em $currentHHmm"
+                        )
+                        triggerWaterAlert(matchingReminder.id, playMedia = false)
                     }
                 }
             }
         }
+    }
+
+    private val _appEmPrimeiroPlano = MutableStateFlow(false)
+
+    /** Chamado pelo onResume/onPause da MainActivity. */
+    fun definirAppEmPrimeiroPlano(emPrimeiroPlano: Boolean) {
+        _appEmPrimeiroPlano.value = emPrimeiroPlano
     }
 
     /**
@@ -304,30 +356,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * ESTA E A CORRECAO DA TELA AZUL QUE ABRIA SOZINHA.
+     *
+     * O QUE ACONTECIA: esta funcao varria o banco atras de "qualquer lembrete
+     * cujo horario passou ha menos de 15 minutos e que nao foi confirmado" e
+     * abria a tela azul em cima disso. Horario passado NAO e prova de que o
+     * alarme tocou. Como ela roda a cada onResume, bastava abrir o app -- ou
+     * voltar da tela de permissoes, ou de outro aplicativo -- dentro daquela
+     * janela de 15 minutos para a tela azul aparecer do nada. Pior: logo depois
+     * da virada do dia, quando o reset zera o status de todos os lembretes,
+     * qualquer horario recente virava candidato.
+     *
+     * O QUE FAZ AGORA: le o registro que o WaterReminderReceiver grava quando o
+     * alarme DISPARA de verdade, e consome esse registro (le uma vez e apaga).
+     * Sem alarme disparado nao existe tela azul, e um mesmo disparo nunca abre
+     * a tela duas vezes.
+     *
+     * A conferencia final continua no triggerWaterAlert; aqui ja descartamos os
+     * casos obvios -- inclusive o do lembrete que foi APAGADO e deixou um alarme
+     * orfao para tras.
+     */
     private suspend fun checkMissedRecentAlert() {
-        val spZone = java.time.ZoneId.of("America/Sao_Paulo")
-        val nowSp = java.time.LocalTime.now(spZone)
-        val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
-        
-        val recentMissed = db.reminderDao().getAllRemindersOnce().filter { reminder ->
-            !reminder.isCompleted && !reminder.isSkipped && reminder.time < currentHHmm
-        }.filter { reminder ->
-            val parts = reminder.time.split(":")
-            if (parts.size == 2) {
-                val h = parts[0].toIntOrNull() ?: 0
-                val m = parts[1].toIntOrNull() ?: 0
-                val reminderTime = java.time.LocalTime.of(h, m)
-                val duration = java.time.Duration.between(reminderTime, nowSp)
-                !duration.isNegative && duration.toMinutes() <= JANELA_CARENCIA_MIN
-            } else false
-        }.maxByOrNull { it.time }
-
-        if (recentMissed != null) {
-            android.util.Log.d("HidrateJa", "Found missed alert: ${recentMissed.id} at ${recentMissed.time}")
-            _pendingAlertReminderId.value = recentMissed.id
-        } else {
-            android.util.Log.d("HidrateJa", "No missed alert found")
+        val id = com.example.alarm.DisparoAlarmePrefs.consumir(
+            getApplication(),
+            JANELA_CARENCIA_MIN * 60_000L
+        )
+        if (id == null) {
+            android.util.Log.d("HidrateJa", "Nenhum alarme disparado recentemente")
+            return
         }
+
+        val reminder = db.reminderDao().getAllRemindersOnce().find { it.id == id }
+        if (reminder == null) {
+            android.util.Log.d("HidrateJa", "Alarme $id disparou para lembrete que nao existe mais")
+            return
+        }
+        if (reminder.isCompleted || reminder.isSkipped) {
+            android.util.Log.d("HidrateJa", "Alarme $id ja foi resolvido, sem tela azul")
+            return
+        }
+
+        android.util.Log.d("HidrateJa", "Alerta perdido: ${reminder.id} das ${reminder.time}")
+        _pendingAlertReminderId.value = reminder.id
     }
 
     private fun scheduleAllReminders() {
@@ -415,6 +486,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun triggerWaterAlert(reminderId: Int? = null, playMedia: Boolean = true) {
         viewModelScope.launch {
             android.util.Log.d("HidrateJa", "triggerWaterAlert id=$reminderId playMedia=$playMedia")
+
+            // Dois caminhos podem pedir a MESMA tela azul quase junto: o
+            // handleIntent (que veio do alarme) e o alerta perdido do onResume.
+            // A conferencia que existia no onResume nao pegava esse caso porque
+            // o triggerWaterAlert e assincrono: quando ela rodava, a tela ainda
+            // nao tinha sido marcada como visivel. Sem esta guarda a contagem de
+            // 10 segundos reiniciava do zero no meio do alerta.
+            if (_isAlertVisible.value && reminderId != null && reminderId == activeReminderId) {
+                android.util.Log.d("HidrateJa", "triggerWaterAlert ABORTOU: ja esta na tela")
+                return@launch
+            }
+
             if (reminderId != null) {
                 // Modo silencioso: os dois interruptores desligados significam
                 // "so a notificacao na barra". Este e o ponto unico que fecha
@@ -485,6 +568,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             lastDismissedReminderId = activeReminderId
             lastDismissedTimestamp = System.currentTimeMillis()
         }
+        // O disparo ja foi atendido aqui na tela; nao pode sobrar registro para
+        // reabrir a tela azul na proxima vez que o app for aberto.
+        com.example.alarm.DisparoAlarmePrefs.limpar(getApplication())
         com.example.alarm.WaterAlarmService.stop(getApplication())
         val idToCancel = activeReminderId
         if (idToCancel != null) {
@@ -535,6 +621,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             lastDismissedReminderId = activeReminderId
             lastDismissedTimestamp = System.currentTimeMillis()
         }
+        com.example.alarm.DisparoAlarmePrefs.limpar(getApplication())
         com.example.alarm.WaterAlarmService.stop(getApplication())
         val idToCancel = activeReminderId
         if (idToCancel != null) {
@@ -806,14 +893,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * continuaria marcado como "Bebido" apontando para um registro que nao
      * existe mais, e o total do dia nao bateria com a tela de lembretes.
      */
-    fun apagarConsumoDoDia(dateKey: String) {
+    fun apagarConsumoDoDia(dateKey: String) = apagarConsumoDoPeriodo(dateKey, dateKey)
+
+    /**
+     * Apaga o consumo de agua de um intervalo de dias.
+     *
+     * E o que o botao Limpar do Historico usa. Antes ele so sabia apagar TUDO,
+     * de todos os dias, mesmo com a tela mostrando um periodo escolhido -- quem
+     * filtrasse uma semana e tocasse em Limpar perdia anos de registro sem que
+     * a tela avisasse.
+     */
+    fun apagarConsumoDoPeriodo(inicio: String, fim: String) {
         viewModelScope.launch {
-            val logs = db.waterLogDao().getLogsForDateOnce(dateKey)
+            val logs = db.waterLogDao().getLogsForDateRangeOnce(inicio, fim)
             val idsApagados = logs.map { it.id }.toSet()
-            android.util.Log.d("HidrateJa", "Apagando consumo de $dateKey: ${logs.size} registro(s)")
+            android.util.Log.d(
+                "HidrateJa",
+                "Apagando consumo de $inicio a $fim: ${logs.size} registro(s)"
+            )
 
-            db.waterLogDao().deleteLogsForDate(dateKey)
+            db.waterLogDao().deleteLogsForDateRange(inicio, fim)
 
+            // Um lembrete marcado como "Bebido" que aponta para um registro
+            // apagado tem que voltar a pendente, senao o total do dia deixa de
+            // bater com a tela de Lembretes.
             db.reminderDao().getAllRemindersOnce().forEach { reminder ->
                 if (reminder.waterLogId != 0 && idsApagados.contains(reminder.waterLogId)) {
                     repository.updateReminder(

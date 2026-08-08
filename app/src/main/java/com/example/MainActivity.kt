@@ -14,8 +14,11 @@ import androidx.activity.viewModels
 import android.app.AlertDialog
 import androidx.core.content.ContextCompat
 import com.example.alarm.AlarmPermissionHelper
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.example.ui.HydraApp
 import com.example.ui.MainViewModel
+import com.example.ui.screens.AberturaAnimada
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.ui.theme.HydraCompanionTheme
 
@@ -40,13 +43,11 @@ class MainActivity : ComponentActivity() {
         
         val veioDoAlarme = intent?.getBooleanExtra("from_notification", false) == true
         android.util.Log.d(TAG, "MainActivity.onCreate veioDoAlarme=$veioDoAlarme")
-        if (veioDoAlarme) {
-            splashScreen.setKeepOnScreenCondition { false }
-        } else {
-            var prontoParaMostrar = false
-            window.decorView.postDelayed({ prontoParaMostrar = true }, 1500)
-            splashScreen.setKeepOnScreenCondition { !prontoParaMostrar }
-        }
+
+        // O splash do sistema sai na hora: quem segura a marca na tela agora e a
+        // AberturaAnimada, desenhada em Compose. Prender o splash do sistema
+        // aqui so somaria uma espera parada antes da animacao comecar.
+        splashScreen.setKeepOnScreenCondition { false }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -72,7 +73,17 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             HydraCompanionTheme {
+                // Quando o app foi aberto PELO ALARME nao ha abertura nenhuma:
+                // a tela azul do lembrete tem que aparecer imediatamente.
+                var mostrarAbertura by androidx.compose.runtime.saveable.rememberSaveable {
+                    androidx.compose.runtime.mutableStateOf(!veioDoAlarme)
+                }
+
                 HydraApp(viewModel = viewModel)
+
+                if (mostrarAbertura) {
+                    AberturaAnimada(onTerminou = { mostrarAbertura = false })
+                }
             }
         }
 
@@ -81,9 +92,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Ver o comentario do verificador de 3s na MainViewModel: fora da tela
+        // ele nao pode abrir nada.
+        viewModel.definirAppEmPrimeiroPlano(false)
+    }
+
     override fun onResume() {
         super.onResume()
         android.util.Log.d(TAG, "MainActivity.onResume")
+        viewModel.definirAppEmPrimeiroPlano(true)
 
         // Abrir o app pelo icone com a task ja existente NAO recria a Activity
         // nem a ViewModel (o sistema so traz a task para frente), entao o init

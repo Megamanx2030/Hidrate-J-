@@ -17,3 +17,6 @@ local.properties
 .env
 debug.keystore
 *.zip
+
+# Ajustes locais do Claude Code (caminhos de sessao, nao servem para o projeto)
+.claude/

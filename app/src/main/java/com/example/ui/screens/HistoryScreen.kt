@@ -67,14 +67,55 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
+/**
+ * Uma das opcoes do aviso de apagar. Linha inteira tocavel, com o alvo grande
+ * e o texto explicando o que vai embora.
+ */
+@Composable
+private fun OpcaoDeLimpeza(
+    selecionada: Boolean,
+    titulo: String,
+    detalhe: String,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selecionada) SecondaryContainer else MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+    ) {
+        androidx.compose.material3.RadioButton(selected = selecionada, onClick = onClick)
+        Spacer(modifier = Modifier.width(4.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = titulo,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = detalhe,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 @Composable
 fun HistoryScreen(
     logs: List<WaterLog>,
     reminders: List<Reminder>,
     dailyGoalMl: Int = 2000,
+    totalDeRegistros: Int = 0,
     onClearHistory: () -> Unit = {},
     onClearEverything: () -> Unit = {},
     onApagarConsumoDoDia: (String) -> Unit = {},
+    onApagarConsumoDoPeriodo: (String, String) -> Unit = { _, _ -> },
+    onPeriodoMudou: (String, String) -> Unit = { _, _ -> },
     onLimparRegistroEsquecido: (Reminder) -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
@@ -84,7 +125,17 @@ fun HistoryScreen(
 
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var deleteRemindersToo by remember { mutableStateOf(false) }
+    var apagarTudo by remember { mutableStateOf(false) }
     var showMonthPickerDialog by remember { mutableStateOf(false) }
+
+    /**
+     * Esconde da lista os dias do periodo que nao tem nenhum registro.
+     *
+     * IMPORTANTE: isso e SO exibicao. Dia sem registro nao existe no banco --
+     * ele e desenhado na hora, a partir das datas do periodo. Nao ha o que
+     * apagar nem espaco a recuperar; o que incomodava era a lista comprida.
+     */
+    var ocultarDiasVazios by remember { mutableStateOf(false) }
 
     // Alvos dos dois modais de exclusao. Guardam o item pendente de confirmacao.
     var diaParaApagar by remember { mutableStateOf<Pair<String, String>?>(null) } // (rotulo, chave)
@@ -125,6 +176,13 @@ fun HistoryScreen(
         val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
         if (rangeStart == rangeEnd) rangeStart.format(fmt)
         else "${rangeStart.format(fmt)} a ${rangeEnd.format(fmt)}"
+    }
+
+    // A consulta ao banco segue o periodo escolhido: so estes dias sao lidos.
+    val chaveInicio = remember(rangeStart) { rangeStart.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) }
+    val chaveFim = remember(rangeEnd) { rangeEnd.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) }
+    androidx.compose.runtime.LaunchedEffect(chaveInicio, chaveFim) {
+        onPeriodoMudou(chaveInicio, chaveFim)
     }
 
     // Time formatter for water logs (e.g., "14:30")
@@ -399,14 +457,50 @@ fun HistoryScreen(
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 10.dp)
+            modifier = Modifier.padding(bottom = 6.dp)
         )
 
+        val diasVazios = remember(periodDaysData) { periodDaysData.count { it.third.isEmpty() } }
+
+        if (diasVazios > 0 || ocultarDiasVazios) {
+            OutlinedButton(
+                onClick = { ocultarDiasVazios = !ocultarDiasVazios },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .padding(bottom = 10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                contentPadding = ButtonDefaults.ContentPadding
+            ) {
+                Icon(
+                    imageVector = if (ocultarDiasVazios) Icons.Default.CalendarMonth else Icons.Default.Delete,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = if (ocultarDiasVazios) com.example.ui.theme.CyanAction else ErrorRed
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (ocultarDiasVazios)
+                        "Mostrar de novo os dias sem registro"
+                    else
+                        "Tirar da lista os $diasVazios dia(s) sem registro",
+                    fontWeight = FontWeight.Bold,
+                    color = if (ocultarDiasVazios) com.example.ui.theme.CyanAction else ErrorRed,
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+
         run {
-            // Os dias sem consumo NAO sao escondidos: era isso que dava a
-            // impressao de que o historico pulava dias.
+            // Os dias sem consumo aparecem por padrao: escondidos, davam a
+            // impressao de que o historico pulava dias. Quem achar a lista
+            // comprida demais tira pelo botao acima.
             // Mais recente primeiro, para hoje aparecer sem rolar a tela.
-            val recentDaysWithLogs = periodDaysData.reversed()
+            val recentDaysWithLogs = periodDaysData
+                .filter { !ocultarDiasVazios || it.third.isNotEmpty() }
+                .reversed()
 
             if (recentDaysWithLogs.isEmpty()) {
                 Card(
@@ -468,8 +562,8 @@ fun HistoryScreen(
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    com.example.ui.components.MiniWaterGlassIcon(
-                                        size = 30.dp,
+                                    com.example.ui.components.MiniJarraECopo(
+                                        size = 34.dp,
                                         fillRatio = (totalMl.toFloat() / dailyGoalMl.toFloat()).coerceIn(0f, 1f)
                                     )
                                 }
@@ -762,63 +856,104 @@ fun HistoryScreen(
         )
     }
 
-    // Confirmation Dialog for Clearing History
+    /**
+     * O BOTAO LIMPAR PASSA A RESPEITAR O PERIODO ESCOLHIDO.
+     *
+     * Como estava: qualquer que fosse o periodo na tela, ele apagava o
+     * historico INTEIRO, de todos os dias, desde a instalacao. Quem filtrasse
+     * "01/08 a 07/08" e tocasse em Limpar perdia meses de registro, e o texto
+     * do aviso nao dizia isso em lugar nenhum -- falava so em "os registros de
+     * consumo de agua".
+     *
+     * E a caixinha "apagar tambem os horarios" ficava a um toque de um botao
+     * escrito so "Limpar", apagando todos os lembretes cadastrados. Num app
+     * feito para idoso, era a coisa mais destrutiva do aplicativo escondida no
+     * lugar mais facil de tocar por engano.
+     *
+     * Agora a escolha e explicita, o padrao e o menos destrutivo (so o periodo
+     * mostrado) e cada opcao diz quantos registros vai apagar.
+     */
     if (showClearConfirmDialog) {
+        val registrosNoPeriodo = logs.size
         AlertDialog(
             onDismissRequest = { showClearConfirmDialog = false },
             title = {
-                Text("Limpar Dados?", fontWeight = FontWeight.Bold, color = ErrorRed)
+                Text("Apagar registros de água", fontWeight = FontWeight.Bold, color = ErrorRed)
             },
             text = {
                 Column {
-                    Text(
-                        text = if (deleteRemindersToo)
-                            "Os registros de consumo de água e TODOS os horários de lembretes salvos serão apagados do aplicativo."
-                        else
-                            "Os registros de consumo de água serão apagados e o status dos lembretes será zerado para pendente, mantendo os horários cadastrados.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                    OpcaoDeLimpeza(
+                        selecionada = !apagarTudo,
+                        titulo = "Só o período mostrado",
+                        detalhe = "$periodoTexto\n$registrosNoPeriodo registro(s) de água",
+                        onClick = {
+                            apagarTudo = false
+                            deleteRemindersToo = false
+                        }
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { deleteRemindersToo = !deleteRemindersToo }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        Checkbox(
-                            checked = deleteRemindersToo,
-                            onCheckedChange = { deleteRemindersToo = it }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Apagar também os horários dos lembretes",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OpcaoDeLimpeza(
+                        selecionada = apagarTudo,
+                        titulo = "Todo o histórico",
+                        detalhe = "$totalDeRegistros registro(s), desde o começo",
+                        onClick = { apagarTudo = true }
+                    )
+
+                    // A opcao mais destrutiva do app so aparece depois que o
+                    // usuario ja escolheu apagar tudo. Ela nao apaga historico:
+                    // apaga os HORARIOS, e o app para de avisar.
+                    if (apagarTudo) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(ErrorContainer)
+                                .clickable { deleteRemindersToo = !deleteRemindersToo }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Checkbox(
+                                checked = deleteRemindersToo,
+                                onCheckedChange = { deleteRemindersToo = it }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Apagar também os horários dos lembretes. " +
+                                       "O aplicativo para de avisar até você cadastrar de novo.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ErrorRed,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (deleteRemindersToo) {
-                            onClearEverything()
-                        } else {
-                            onClearHistory()
+                        when {
+                            apagarTudo && deleteRemindersToo -> onClearEverything()
+                            apagarTudo -> onClearHistory()
+                            else -> onApagarConsumoDoPeriodo(chaveInicio, chaveFim)
                         }
                         showClearConfirmDialog = false
+                        apagarTudo = false
+                        deleteRemindersToo = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
-                    Text("Limpar", fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Apagar", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirmDialog = false }) {
-                    Text("Cancelar")
+                TextButton(
+                    onClick = { showClearConfirmDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancelar", fontWeight = FontWeight.Bold)
                 }
             },
             shape = RoundedCornerShape(20.dp)
