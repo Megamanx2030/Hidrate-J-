@@ -60,5 +60,31 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 16.sp,
         lineHeight = 22.sp
+    ),
+
+    // ESTES TRES FALTAVAM, E ERA O PIOR PROBLEMA DE LEITURA DO APP.
+    //
+    // Sem sobrescrever, eles caiam nos padroes do Material3: bodySmall 12sp,
+    // labelSmall 11sp e titleSmall 14sp. E as telas usavam justamente esses
+    // para conteudo de verdade -- titulo e data do lembrete na tela inicial,
+    // horarios de consumo e "Esqueceu de beber em..." no historico.
+    // Texto de 11sp num app para idosos anula a escala grande definida acima.
+    titleSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = 18.sp,
+        lineHeight = 24.sp
+    ),
+    bodySmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 22.sp
+    ),
+    labelSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 15.sp,
+        lineHeight = 20.sp
     )
 )
