@@ -31,9 +31,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,12 +64,14 @@ import com.example.ui.theme.SecondaryContainer
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     logs: List<WaterLog>,
@@ -89,11 +95,6 @@ fun HistoryScreen(
     var diaParaApagar by remember { mutableStateOf<Pair<String, String>?>(null) } // (rotulo, chave)
     var esquecidoParaApagar by remember { mutableStateOf<Reminder?>(null) }
 
-    // Month picker state (0 = Janeiro, 7 = Agosto, etc.)
-    val monthsList = listOf(
-        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    )
     /**
      * A data era lida uma vez so, com remember { }. Com o app aberto virando
      * a meia-noite, o historico continuava mostrando a semana do dia anterior
@@ -111,10 +112,25 @@ fun HistoryScreen(
         }
     }
 
-    var selectedMonthIndex by remember { mutableStateOf(currentLocalDate.monthValue - 1) }
-    var selectedYear by remember { mutableStateOf(currentLocalDate.year) }
+    /**
+     * UM UNICO PERIODO MANDA NO GRAFICO E NA LISTA.
+     *
+     * Antes eram duas coisas diferentes na mesma tela: o grafico mostrava uma
+     * semana e a lista mostrava o mes inteiro. Nao tinha como baterem.
+     *
+     * Agora o usuario escolhe um intervalo de datas no calendario e os dois
+     * passam a mostrar exatamente os mesmos dias.
+     *
+     * Padrao: os ultimos 7 dias terminando hoje.
+     */
+    var rangeStart by remember { mutableStateOf(currentLocalDate.minusDays(6)) }
+    var rangeEnd by remember { mutableStateOf(currentLocalDate) }
 
-    val selectedMonthText = "${monthsList[selectedMonthIndex]} de $selectedYear"
+    val periodoTexto = remember(rangeStart, rangeEnd) {
+        val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+        if (rangeStart == rangeEnd) rangeStart.format(fmt)
+        else "${rangeStart.format(fmt)} a ${rangeEnd.format(fmt)}"
+    }
 
     // Time formatter for water logs (e.g., "14:30")
     val logTimeFormatter = remember {
@@ -128,120 +144,66 @@ fun HistoryScreen(
         logs.groupBy { it.dateString }
     }
 
-    // Calendar week data for the chart and list (Sunday to Saturday)
-    val pastDaysData = remember(logs, dailyGoalMl, selectedMonthIndex, selectedYear, currentLocalDate) {
-        val list = mutableListOf<Triple<String, String, List<WaterLog>>>() // (formattedDateStr, dateKey, dayLogs)
-        val cal = Calendar.getInstance(spTimeZone)
-        // O DIA 1 TEM QUE VIR ANTES DO ANO E DO MES.
-        //
-        // Antes o ano e o mes eram definidos primeiro, com o dia ainda no
-        // valor de hoje. Se hoje fosse 31 e o usuario escolhesse fevereiro,
-        // o Calendar transbordava para marco antes mesmo do getActualMaximum
-        // ser chamado, e a semana exibida era a errada.
-        cal.set(Calendar.DAY_OF_MONTH, 1)
-        cal.set(Calendar.YEAR, selectedYear)
-        cal.set(Calendar.MONTH, selectedMonthIndex)
-        // Set to current day of month or last day if in past
-        if (selectedMonthIndex == currentLocalDate.monthValue - 1 && selectedYear == currentLocalDate.year) {
-            cal.set(Calendar.DAY_OF_MONTH, currentLocalDate.dayOfMonth)
-        } else {
-            cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
-        }
+    /**
+     * Os dias do periodo escolhido, do mais antigo para o mais novo.
+     *
+     * Usa java.time em vez de Calendar de proposito: o Calendar exigia cuidado
+     * com a ordem dos set() para nao transbordar de mes, e ja tinha causado um
+     * bug de data aqui.
+     */
+    val periodDaysData = remember(logs, rangeStart, rangeEnd) {
+        val list = mutableListOf<Triple<String, String, List<WaterLog>>>()
+        val keyFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        val labelFmt = DateTimeFormatter.ofPattern("dd/MM")
+        // DayOfWeek.value: 1 = segunda ... 7 = domingo
+        val dayNames = arrayOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
 
-        // Align to Monday
-        cal.firstDayOfWeek = Calendar.MONDAY
-        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-
-        val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }
-        val dateFormat = SimpleDateFormat("dd/MM", Locale.getDefault()).apply { timeZone = spTimeZone }
-        val dayNames = arrayOf("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb")
-
-        for (i in 0..6) {
-            val key = keyFormat.format(cal.time)
-            val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
-            val label = "${dayNames[dayOfWeek - 1]}, ${dateFormat.format(cal.time)}"
-            val dayLogs = groupedLogs[key] ?: emptyList()
-            list.add(Triple(label, key, dayLogs))
-            cal.add(Calendar.DAY_OF_YEAR, 1)
+        var dia = rangeStart
+        while (!dia.isAfter(rangeEnd)) {
+            val key = dia.format(keyFmt)
+            val label = "${dayNames[dia.dayOfWeek.value - 1]}, ${dia.format(labelFmt)}"
+            list.add(Triple(label, key, groupedLogs[key] ?: emptyList()))
+            dia = dia.plusDays(1)
         }
         list
     }
 
-    /**
-     * TODOS os dias do mes escolhido, em sequencia.
-     *
-     * Antes a lista mostrava so os 7 dias da semana atual, e ainda escondia os
-     * dias sem consumo -- por isso parecia que dias eram pulados. Agora vem o
-     * mes inteiro, dia 1 em diante, inclusive os sem registro.
-     *
-     * No mes corrente a lista para em hoje: dias futuros nao tem o que mostrar.
-     * O grafico de gotas continua sendo o da semana (pastDaysData).
-     */
-    val monthDaysData = remember(logs, selectedMonthIndex, selectedYear, currentLocalDate) {
-        val list = mutableListOf<Triple<String, String, List<WaterLog>>>()
-        val cal = Calendar.getInstance(spTimeZone)
-        cal.set(Calendar.DAY_OF_MONTH, 1)
-        cal.set(Calendar.YEAR, selectedYear)
-        cal.set(Calendar.MONTH, selectedMonthIndex)
-
-        val ultimoDia = if (selectedMonthIndex == currentLocalDate.monthValue - 1 &&
-            selectedYear == currentLocalDate.year
-        ) {
-            currentLocalDate.dayOfMonth
-        } else {
-            cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-        }
-
-        val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }
-        val dateFormat = SimpleDateFormat("dd/MM", Locale.getDefault()).apply { timeZone = spTimeZone }
-        val dayNames = arrayOf("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb")
-
-        for (dia in 1..ultimoDia) {
-            cal.set(Calendar.DAY_OF_MONTH, dia)
-            val key = keyFormat.format(cal.time)
-            val label = "${dayNames[cal.get(Calendar.DAY_OF_WEEK) - 1]}, ${dateFormat.format(cal.time)}"
-            list.add(Triple(label, key, groupedLogs[key] ?: emptyList()))
-        }
-        // Mais recente primeiro: o idoso ve o dia de hoje sem rolar a tela.
-        list.reversed()
-    }
-
-    // Chart fill ratios for past 7 days (oldest to newest)
-    val chartRatios = remember(pastDaysData) {
-        pastDaysData.map { (_, _, dayLogs) ->
+    // Grafico e lista saem da MESMA fonte: e isso que garante a sincronia.
+    val chartRatios = remember(periodDaysData, dailyGoalMl) {
+        periodDaysData.map { (_, _, dayLogs) ->
             val totalMl = dayLogs.sumOf { it.amountMl }
             (totalMl.toFloat() / dailyGoalMl.toFloat()).coerceIn(0f, 1f)
         }
     }
 
-    // Chart day labels (oldest to newest)
-    val chartDays = remember(pastDaysData) {
-        pastDaysData.map { (dateDisplay, _, _) ->
-            dateDisplay.take(3)
-        }
+    val chartDays = remember(periodDaysData) {
+        periodDaysData.map { (dateDisplay, _, _) -> dateDisplay.take(3) }
     }
 
-    // Daily Average
-    val dailyAvgText = remember(pastDaysData) {
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }.format(Date())
-        val elapsedDaysData = pastDaysData.filter { it.second <= todayStr }
-        val sum = elapsedDaysData.sumOf { it.third.sumOf { l -> l.amountMl } }
-        val daysCount = elapsedDaysData.size
-        val avg = if (daysCount > 0) sum / daysCount else 0
+    // Media diaria: so conta dias que ja aconteceram.
+    val dailyAvgText = remember(periodDaysData, currentLocalDate) {
+        val hojeStr = currentLocalDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        val diasPassados = periodDaysData.filter { it.second <= hojeStr }
+        val soma = diasPassados.sumOf { it.third.sumOf { l -> l.amountMl } }
+        val avg = if (diasPassados.isNotEmpty()) soma / diasPassados.size else 0
         String.format(Locale("pt", "BR"), "%.1fL", avg / 1000f)
     }
 
-    // Skipped Reminders
-    val skippedReminders = remember(reminders, selectedMonthIndex, selectedYear) {
+    // Esquecidos tambem seguem o periodo, e nao mais o mes.
+    val skippedReminders = remember(reminders, rangeStart, rangeEnd) {
         reminders.filter { reminder ->
             if (reminder.skippedDate.isBlank()) false
             else {
-                // skippedDate is "dd/MM/yyyy"
+                // skippedDate vem como "dd/MM/yyyy"
                 val parts = reminder.skippedDate.split("/")
                 if (parts.size == 3) {
-                    val m = parts[1].toIntOrNull() ?: -1
-                    val y = parts[2].toIntOrNull() ?: -1
-                    (m - 1) == selectedMonthIndex && y == selectedYear
+                    val d = parts[0].toIntOrNull()
+                    val m = parts[1].toIntOrNull()
+                    val y = parts[2].toIntOrNull()
+                    if (d != null && m != null && y != null) {
+                        val data = runCatching { LocalDate.of(y, m, d) }.getOrNull()
+                        data != null && !data.isBefore(rangeStart) && !data.isAfter(rangeEnd)
+                    } else false
                 } else false
             }
         }
@@ -289,7 +251,7 @@ fun HistoryScreen(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "Selecionar Mês",
+                    text = "Escolher Datas",
                     fontWeight = FontWeight.Bold,
                     color = com.example.ui.theme.CyanAction,
                     style = MaterialTheme.typography.labelMedium,
@@ -335,7 +297,7 @@ fun HistoryScreen(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = "Mês Exibido: $selectedMonthText",
+                text = "Período: $periodoTexto",
                 style = MaterialTheme.typography.bodyMedium,
                 color = com.example.ui.theme.CyanAction,
                 fontWeight = FontWeight.Bold,
@@ -357,13 +319,15 @@ fun HistoryScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Resumo da Semana",
+                        // Deixou de ser sempre uma semana: agora e o periodo
+                        // escolhido, que pode ter 1 dia ou o mes inteiro.
+                        text = "Resumo do Período",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = selectedMonthText,
+                        text = "${periodDaysData.size} dia(s)",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium,
@@ -375,12 +339,12 @@ fun HistoryScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Animated Weekly Water Drop Chart with real calculated ratios
-                val todayDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply { timeZone = spTimeZone }.format(java.util.Date())
+                val todayDateStr = currentLocalDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                 com.example.ui.components.AnimatedWaterDropChart(
-                    days = if (chartDays.size == 7) chartDays else listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"),
-                    fillRatios = if (chartRatios.size == 7) chartRatios else listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f),
-                    dates = pastDaysData.map { it.second },
-                    totalsMl = pastDaysData.map { it.third.sumOf { l -> l.amountMl } },
+                    days = chartDays,
+                    fillRatios = chartRatios,
+                    dates = periodDaysData.map { it.second },
+                    totalsMl = periodDaysData.map { it.third.sumOf { l -> l.amountMl } },
                     dailyGoalMl = dailyGoalMl,
                     todayDate = todayDateStr,
                     modifier = Modifier.fillMaxWidth()
@@ -435,8 +399,8 @@ fun HistoryScreen(
 
         // Recent Days Section (Dynamically logged with timestamps)
         Text(
-            // Voltou a ser "do Mes" porque a lista agora e do mes inteiro.
-            text = "Dias do Mês (com horários)",
+            // Segue o mesmo periodo do grafico acima.
+            text = "Dias do Período (com horários)",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
@@ -444,9 +408,10 @@ fun HistoryScreen(
         )
 
         run {
-            // Os dias sem consumo NAO sao mais escondidos: era isso que dava a
+            // Os dias sem consumo NAO sao escondidos: era isso que dava a
             // impressao de que o historico pulava dias.
-            val recentDaysWithLogs = monthDaysData
+            // Mais recente primeiro, para hoje aparecer sem rolar a tela.
+            val recentDaysWithLogs = periodDaysData.reversed()
 
             if (recentDaysWithLogs.isEmpty()) {
                 Card(
@@ -853,69 +818,82 @@ fun HistoryScreen(
         )
     }
 
-    // Dialog for Selecting Month
+    /**
+     * CALENDARIO COM INTERVALO, no lugar da grade de 12 meses.
+     *
+     * O DateRangePicker do Material 3 ja resolve tudo que foi pedido: mostra o
+     * calendario de verdade, navega mes e ano, e o usuario toca no dia inicial
+     * e no dia final para marcar o intervalo. Nao vale a pena desenhar um
+     * calendario na mao.
+     *
+     * As datas do componente vem em milissegundos UTC a meia-noite, por isso a
+     * conversao usa ZoneOffset.UTC -- usar o fuso local aqui deslocaria o dia.
+     */
     if (showMonthPickerDialog) {
-        AlertDialog(
-            onDismissRequest = { showMonthPickerDialog = false },
-            title = {
-                Text("Selecionar Mês do Histórico", fontWeight = FontWeight.Bold, color = com.example.ui.theme.CyanAction)
-            },
-            text = {
-                Column {
-                    Text(
-                        text = "Escolha um mês para visualizar os dados de consumo:",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+        val rangeState = rememberDateRangePickerState(
+            initialSelectedStartDateMillis = rangeStart.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            initialSelectedEndDateMillis = rangeEnd.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
 
-                    monthsList.chunked(2).forEachIndexed { rowIdx, pair ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            pair.forEachIndexed { colIdx, mName ->
-                                val mIdx = rowIdx * 2 + colIdx
-                                val isSelected = mIdx == selectedMonthIndex
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(horizontal = 4.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isSelected) com.example.ui.theme.CyanAction else SecondaryContainer)
-                                        .clickable {
-                                            selectedMonthIndex = mIdx
-                                        }
-                                        // Antes so o padding de 10dp definia a
-                                        // altura, dando cerca de 40dp.
-                                        .heightIn(min = 48.dp)
-                                        .padding(vertical = 10.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = mName,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.White else PrimaryBlue
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
+        DatePickerDialog(
+            onDismissRequest = { showMonthPickerDialog = false },
             confirmButton = {
                 Button(
-                    onClick = { showMonthPickerDialog = false },
+                    onClick = {
+                        val inicioMs = rangeState.selectedStartDateMillis
+                        val fimMs = rangeState.selectedEndDateMillis
+                        if (inicioMs != null) {
+                            val inicio = java.time.Instant.ofEpochMilli(inicioMs)
+                                .atZone(ZoneOffset.UTC).toLocalDate()
+                            // Tocar em um dia so vale como periodo de um dia.
+                            val fim = if (fimMs != null) {
+                                java.time.Instant.ofEpochMilli(fimMs)
+                                    .atZone(ZoneOffset.UTC).toLocalDate()
+                            } else inicio
+
+                            rangeStart = inicio
+                            rangeEnd = fim
+                        }
+                        showMonthPickerDialog = false
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.CyanAction),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) {
-                    Text("Concluir", fontWeight = FontWeight.Bold)
+                    Text("Concluir", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             },
-            shape = RoundedCornerShape(20.dp)
-        )
+            dismissButton = {
+                TextButton(
+                    onClick = { showMonthPickerDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancelar", fontWeight = FontWeight.Bold)
+                }
+            }
+        ) {
+            DateRangePicker(
+                state = rangeState,
+                title = {
+                    Text(
+                        text = "Escolha o período",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = com.example.ui.theme.CyanAction,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 16.dp, top = 16.dp)
+                    )
+                },
+                headline = {
+                    Text(
+                        text = "Toque no primeiro dia e depois no último",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+                    )
+                },
+                showModeToggle = false,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }

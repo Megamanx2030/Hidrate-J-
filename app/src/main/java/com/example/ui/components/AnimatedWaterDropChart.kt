@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -68,9 +70,17 @@ fun AnimatedWaterDropChart(
         label = "phase"
     )
 
+    // ROLAGEM HORIZONTAL COM LARGURA FIXA POR COLUNA.
+    //
+    // Antes cada coluna usava weight(1f), o que so funcionava com exatamente 7
+    // dias: o copo tem 44dp fixos, entao com um periodo maior as colunas
+    // encolhiam e o desenho estourava. Com largura fixa e rolagem, o grafico
+    // aguenta de 1 a 31 dias sem deformar.
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.Bottom
     ) {
         days.forEachIndexed { index, dayLabel ->
@@ -81,7 +91,7 @@ fun AnimatedWaterDropChart(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .weight(1f)
+                    .width(50.dp)
                     .defaultMinSize(minHeight = 48.dp)
                     .clickable {
                         if (selectedIndex == index) selectedIndex = null else selectedIndex = index
