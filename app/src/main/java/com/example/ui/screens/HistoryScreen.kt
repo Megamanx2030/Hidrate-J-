@@ -233,14 +233,32 @@ fun HistoryScreen(
         periodDaysData.map { (dateDisplay, _, _) -> dateDisplay.take(3) }
     }
 
-    // Media diaria: so conta dias que ja aconteceram.
-    val dailyAvgText = remember(periodDaysData, currentLocalDate) {
+    /**
+     * Media diaria: so conta dias que ja aconteceram.
+     *
+     * O NUMERO SEMPRE ESTEVE CERTO, MAS APARECIA COMO ZERO.
+     *
+     * Com 250 ml num periodo de 7 dias a media e 35 ml por dia. Escrito com uma
+     * casa decimal em litros, 0,035 L vira "0,0L" -- e a tela ficava dizendo
+     * que a media era zero logo abaixo de um dia com 0,3 L registrado. Quem le
+     * conclui que o app nao gravou a agua.
+     *
+     * Abaixo de um litro a media passa a ser dita em ml, que e a unidade em que
+     * a pessoa bebe (o copo dela tem 250 ml). Nao ha arredondamento que engula
+     * o valor.
+     */
+    val mediaDoPeriodo = remember(periodDaysData, currentLocalDate) {
         val hojeStr = currentLocalDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
         val diasPassados = periodDaysData.filter { it.second <= hojeStr }
         val soma = diasPassados.sumOf { it.third.sumOf { l -> l.amountMl } }
         val avg = if (diasPassados.isNotEmpty()) soma / diasPassados.size else 0
-        String.format(Locale("pt", "BR"), "%.1fL", avg / 1000f)
+        val texto = if (avg in 1..999) "$avg ml"
+                    else String.format(Locale("pt", "BR"), "%.1f L", avg / 1000f)
+        Triple(texto, diasPassados.size, soma)
     }
+    val dailyAvgText = mediaDoPeriodo.first
+    val diasContados = mediaDoPeriodo.second
+    val totalDoPeriodoMl = mediaDoPeriodo.third
 
     // Esquecidos tambem seguem o periodo, e nao mais o mes.
     val skippedReminders = remember(reminders, rangeStart, rangeEnd) {
@@ -423,6 +441,16 @@ fun HistoryScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
+                        /**
+                         * O SUBTITULO EXPLICA POR QUE O NUMERO E PEQUENO.
+                         *
+                         * Dizia "Meta: 3,0L por dia" ao lado de uma media de
+                         * 35 ml, e as duas coisas juntas davam a entender que o
+                         * app tinha perdido a agua registrada. Nao tinha: 250 ml
+                         * espalhados por 7 dias DAO 35 ml por dia. O que faltava
+                         * era dizer que a media e do periodo inteiro, contando
+                         * os dias em que nao houve registro.
+                         */
                         Column {
                             Text(
                                 text = "Média por dia:",
@@ -430,11 +458,12 @@ fun HistoryScreen(
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold
                             )
-                            val goalL = String.format(java.util.Locale("pt", "BR"), "%.1fL", dailyGoalMl / 1000f)
+                            val totalStr = if (totalDoPeriodoMl in 1..999) "$totalDoPeriodoMl ml"
+                                           else String.format(Locale("pt", "BR"), "%.1f L", totalDoPeriodoMl / 1000f)
                             Text(
-                                text = "Meta: $goalL por dia",
+                                text = "$totalStr em $diasContados dia(s)",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.8f)
+                                color = Color.White.copy(alpha = 0.9f)
                             )
                         }
                     }
