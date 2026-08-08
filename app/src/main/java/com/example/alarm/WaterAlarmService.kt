@@ -1,5 +1,6 @@
 package com.example.alarm
 
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -103,12 +104,17 @@ class WaterAlarmService : Service() {
         // entao e a primeira coisa que fazemos -- antes de qualquer I/O.
         // Esta mesma notificacao carrega o setFullScreenIntent que acende
         // a tela e abre a MainActivity com o celular bloqueado.
+        // Leitura SINCRONA do modo (SharedPreferences). Nao da para consultar o
+        // Room aqui: a resposta chegaria depois do prazo do startForeground.
+        val comTelaCheia = AlertModePrefs.deveMostrarTelaAzul(this)
+
         val helper = NotificationHelper(this)
         val notification = helper.buildWaterReminderNotification(
             reminderId = reminderId,
             title = title,
             time = time,
-            chimeType = chimeType
+            chimeType = chimeType,
+            comTelaCheia = comTelaCheia
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -121,6 +127,25 @@ class WaterAlarmService : Service() {
             startForeground(reminderId, notification)
         }
         isForegroundStarted = true
+
+        // GARANTIA DA NOTIFICACAO NA BARRA, EM QUALQUER MODO.
+        //
+        // O Android pode ADIAR em ate 10 segundos a exibicao da notificacao de
+        // um foreground service. Com os dois modos desligados (sem som e sem
+        // vibracao) o servico termina em milissegundos, e essa corrida podia
+        // deixar o usuario sem nenhum aviso visivel na barra.
+        //
+        // Postar a MESMA notificacao com o MESMO id explicitamente forca a
+        // exibicao imediata e nao duplica: o sistema trata como atualizacao.
+        // Vale para so vibrar, som mais vibracao e tudo desligado, com a tela
+        // bloqueada ou desbloqueada.
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm?.notify(reminderId, notification)
+        } catch (e: Exception) {
+            android.util.Log.e("HidrateJa", "Falha ao postar notificacao: ${e.message}")
+            e.printStackTrace()
+        }
 
         acquireWakeLock()
 
@@ -143,6 +168,11 @@ class WaterAlarmService : Service() {
                 kotlinx.coroutines.delay(12_000)
                 finishAlarm(removerNotificacao = false, reminderId = reminderId)
             }
+
+            android.util.Log.d(
+                "HidrateJa",
+                "Service modo: vibrateOnly=$vibrateOnly alertsEnabled=$alertsEnabled"
+            )
 
             when {
                 vibrateOnly -> manager.vibrateOnly(ALARM_DURATION_SECONDS) { finishAlarm(removerNotificacao = false, reminderId = reminderId) }

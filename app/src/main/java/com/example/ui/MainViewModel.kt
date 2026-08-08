@@ -106,6 +106,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.initDefaultDataIfNeeded()
 
+            normalizarModoDeAviso()
+
             // ORDEM IMPORTA: o reset diario tem que rodar ANTES da varredura
             // de "esquecidos", senao os lembretes de ontem sao marcados como
             // esquecidos hoje.
@@ -172,6 +174,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         
         return java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy").format(target)
+    }
+
+    /**
+     * Conserta o estado antigo em que os dois modos ficaram gravados ligados.
+     *
+     * Quem estava com "Ativar Alertas" e "Somente Vibrar" ligados ao mesmo
+     * tempo ja ouvia so a vibracao (o WaterAlarmService sempre deu preferencia
+     * a ela), mas a tela mostrava os dois ligados. Aqui o banco passa a
+     * refletir o que de fato acontece, sem mudar o comportamento sentido pelo
+     * usuario.
+     */
+    private suspend fun normalizarModoDeAviso() {
+        val atual = db.userSettingsDao().getSettingsOnce() ?: return
+        if (atual.alertsEnabled && atual.vibrateOnly) {
+            android.util.Log.d("HidrateJa", "Modos conflitantes gravados: mantendo Somente Vibrar")
+            val corrigido = atual.copy(alertsEnabled = false)
+            repository.updateSettings(corrigido)
+            espelharModoNasPrefs(corrigido.alertsEnabled, corrigido.vibrateOnly)
+        } else {
+            espelharModoNasPrefs(atual.alertsEnabled, atual.vibrateOnly)
+        }
+    }
+
+    /**
+     * O Room continua sendo a fonte da verdade, mas o receiver e o servico
+     * precisam do modo de forma SINCRONA, antes de montar a notificacao.
+     * Por isso o espelho em SharedPreferences, regravado a cada mudanca.
+     */
+    private fun espelharModoNasPrefs(alertsEnabled: Boolean, vibrateOnly: Boolean) {
+        com.example.alarm.AlertModePrefs.save(getApplication(), alertsEnabled, vibrateOnly)
     }
 
     private suspend fun resetDailyStatusIfNewDay() {
@@ -252,8 +284,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch {
-            android.util.Log.d("HidrateJa", "onResume: checando alerta perdido")
+            android.util.Log.d("HidrateJa", "onResume: virada de dia + alerta perdido")
+
+            // MESMA ORDEM DO init, E PELO MESMO MOTIVO.
+            //
+            // A virada de dia so rodava na criacao da ViewModel. Quem deixa o
+            // app aberto de um dia para o outro, ou volta para ele pela task
+            // ja existente, ficava com o status de ontem: a tela mostrava
+            // "Bebido as 06:04" de ontem e o isCompleted/isSkipped velho
+            // bloqueava o alerta de hoje.
+            //
+            // Rodando aqui, a virada acontece toda vez que o usuario volta ao
+            // app, e os lembretes rolam sozinhos para o dia seguinte nos
+            // mesmos horarios, sem ele refazer nada.
+            resetDailyStatusIfNewDay()
+            markMissedRemindersAsSkipped()
             checkMissedRecentAlert()
+            scheduleAllReminders()
         }
     }
 
@@ -294,7 +341,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
             
             reminders.forEach { reminder ->
-                if (!reminder.isCompleted && reminder.time != currentHHmm) {
+                // Um lembrete ja concluido cujo horario JA PASSOU tem que ser
+                // rearmado assim mesmo: a proxima ocorrencia dele e amanha, e
+                // ate la o reset diario ja terá zerado o status. Sem isso ele
+                // so voltava a ser agendado quando o usuario abria o app
+                // depois da virada -- e se ficasse dias sem abrir, morria.
+                //
+                // O unico caso que NAO rearma e o concluido que ainda vai
+                // chegar hoje: tocaria para algo que o usuario ja marcou como
+                // bebido.
+                val jaPassouHoje = reminder.time <= currentHHmm
+                val concluidoEAindaVaiChegar = reminder.isCompleted && !jaPassouHoje
+
+                if (!concluidoEAindaVaiChegar && reminder.time != currentHHmm) {
                     alarmScheduler.scheduleReminder(
                         reminderId = reminder.id,
                         time = reminder.time,
@@ -357,6 +416,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             android.util.Log.d("HidrateJa", "triggerWaterAlert id=$reminderId playMedia=$playMedia")
             if (reminderId != null) {
+                // Modo silencioso: os dois interruptores desligados significam
+                // "so a notificacao na barra". Este e o ponto unico que fecha
+                // TODOS os caminhos de exibicao vindos de lembrete -- o poll de
+                // 3s, o handleIntent e o alerta perdido. O botao de testar
+                // alerta continua funcionando porque passa reminderId nulo.
+                val s = userSettings.value
+                if (!s.alertsEnabled && !s.vibrateOnly) {
+                    android.util.Log.d("HidrateJa", "triggerWaterAlert ABORTOU: modo silencioso")
+                    return@launch
+                }
+
                 val reminder = db.reminderDao().getAllRemindersOnce().find { it.id == reminderId }
                 if (reminder != null && (reminder.isCompleted || reminder.isSkipped)) {
                     android.util.Log.d(
@@ -638,27 +708,70 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 monthlyGoalLiters = monthlyGoalLiters,
                 glassSizeMl = glassSizeMl,
                 alertsEnabled = alertsEnabled,
+                // Mantem a exclusividade tambem por aqui: salvar as
+                // configuracoes com o som ligado nao pode reintroduzir o
+                // estado conflitante dos dois modos ligados juntos.
+                vibrateOnly = if (alertsEnabled) false else userSettings.value.vibrateOnly,
                 chimeType = chimeType
             )
             repository.updateSettings(updated)
+            espelharModoNasPrefs(updated.alertsEnabled, updated.vibrateOnly)
             closeSettingsDialog()
         }
     }
 
+    /**
+     * "Ativar Alertas" e "Somente Vibrar" sao um SELETOR DE MODO, nao dois
+     * interruptores independentes. Ligar um sempre desliga o outro.
+     *
+     * Antes os dois podiam ficar ligados ao mesmo tempo. Na pratica o
+     * WaterAlarmService ja tratava vibrar como vencedor, entao a tela mostrava
+     * "Ligado" nos dois e o som nao saia -- o usuario nao tinha como entender
+     * o que estava valendo. Para um app de idoso isso e pior do que um modo a
+     * menos.
+     *
+     * Estados possiveis agora:
+     *   alertas ON  + vibrar OFF -> toca o sino e vibra
+     *   alertas OFF + vibrar ON  -> so vibra
+     *   alertas OFF + vibrar OFF -> silencioso (so a tela azul e a notificacao)
+     *
+     * Em nenhum caso os lembretes sao cancelados: a tela azul continua
+     * aparecendo, inclusive no modo so vibrar. Por isso o reagendamento e
+     * feito nos dois lados.
+     */
     fun toggleAlertsEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            val updated = userSettings.value.copy(alertsEnabled = enabled)
+            val updated = userSettings.value.copy(
+                alertsEnabled = enabled,
+                // Ligar o som desliga o so-vibrar, senao este switch nao teria
+                // efeito nenhum e pareceria quebrado.
+                vibrateOnly = if (enabled) false else userSettings.value.vibrateOnly
+            )
+            android.util.Log.d(
+                "HidrateJa",
+                "toggleAlertsEnabled($enabled) -> alertas=${updated.alertsEnabled} vibrar=${updated.vibrateOnly}"
+            )
             repository.updateSettings(updated)
-            if (enabled) {
-                scheduleAllReminders()
-            }
+            espelharModoNasPrefs(updated.alertsEnabled, updated.vibrateOnly)
+            scheduleAllReminders()
         }
     }
 
     fun toggleVibrateOnly(enabled: Boolean) {
         viewModelScope.launch {
-            val updated = userSettings.value.copy(vibrateOnly = enabled)
+            val updated = userSettings.value.copy(
+                vibrateOnly = enabled,
+                // Ligar o so-vibrar desliga o som; desligar devolve o som.
+                alertsEnabled = !enabled
+            )
+            android.util.Log.d(
+                "HidrateJa",
+                "toggleVibrateOnly($enabled) -> alertas=${updated.alertsEnabled} vibrar=${updated.vibrateOnly}"
+            )
             repository.updateSettings(updated)
+            espelharModoNasPrefs(updated.alertsEnabled, updated.vibrateOnly)
+            // Sem isto o modo so-vibrar podia ficar sem alarme armado.
+            scheduleAllReminders()
         }
     }
 

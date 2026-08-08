@@ -79,7 +79,8 @@ class NotificationHelper(private val context: Context) {
         reminderId: Int,
         title: String,
         time: String,
-        chimeType: String
+        chimeType: String,
+        comTelaCheia: Boolean = true
     ): Notification {
 
         // Intent que abre a tela azul. O extra show_alert e lido pela
@@ -138,7 +139,11 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(context, CHANNEL_ID)
+        // Com os dois interruptores desligados o lembrete e silencioso: so a
+        // notificacao na barra. O setFullScreenIntent PRECISA sair, senao com
+        // o celular bloqueado o proprio Android abre a MainActivity e a tela
+        // azul aparece mesmo assim -- foi o que o logcat mostrou as 22:19.
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle("💧 $title")
             .setContentText("Hora de beber água! São $time")
@@ -154,11 +159,15 @@ class NotificationHelper(private val context: Context) {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)
-            .setFullScreenIntent(openAppPendingIntent, true)
             .setDeleteIntent(dismissPendingIntent)
             .addAction(android.R.drawable.ic_input_add, "✅ Bebi Água", confirmPendingIntent)
             .addAction(android.R.drawable.ic_delete, "❌ Ignorar", ignorePendingIntent)
-            .build()
+
+        if (comTelaCheia) {
+            builder.setFullScreenIntent(openAppPendingIntent, true)
+        }
+
+        return builder.build()
     }
 
     fun showWaterReminderNotification(

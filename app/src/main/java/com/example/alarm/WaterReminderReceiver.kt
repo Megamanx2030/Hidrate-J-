@@ -97,6 +97,13 @@ class WaterReminderReceiver : BroadcastReceiver() {
      * abriu. A prova esta no log da MainActivity ("MainActivity.handleIntent").
      */
     private fun abrirTelaAzulSeDesbloqueado(context: Context, reminderId: Int) {
+        // Modo silencioso (os dois interruptores desligados): so a notificacao
+        // na barra, sem tela azul. Vale para bloqueado e desbloqueado.
+        if (!AlertModePrefs.deveMostrarTelaAzul(context)) {
+            Log.d(TAG, "Modo silencioso -> so notificacao na barra, sem tela azul")
+            return
+        }
+
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
         val bloqueado = keyguard?.isKeyguardLocked ?: false
 

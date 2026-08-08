@@ -71,40 +71,30 @@ fun EditReminderDialog(
     var wasAutoChanged by remember { mutableStateOf(false) }
     var autoChangedTimeStr by remember { mutableStateOf("") }
 
+    /**
+     * O aviso agora depende SO do horario, nao da data do formulario.
+     *
+     * Antes ele so era calculado quando a data digitada era igual a hoje. Só
+     * que lembrete existente guarda em `date` a PROXIMA ocorrencia, que quase
+     * sempre e amanha -- entao ao EDITAR a condicao nunca batia e o aviso
+     * nunca aparecia. Só funcionava em lembrete novo.
+     *
+     * Comparar so o horario tambem e o que corresponde a realidade do
+     * agendamento: o AlarmScheduler usa nextOccurrenceMillis(time), que joga
+     * para amanha quando o horario ja passou, e ignora o campo de data.
+     */
     LaunchedEffect(hourStr, minStr) {
         val h = (hourStr.toIntOrNull() ?: 8).coerceIn(0, 23)
         val m = (minStr.toIntOrNull() ?: 0).coerceIn(0, 59)
-        val d = (dayStr.toIntOrNull() ?: 3).coerceIn(1, 31)
-        val mo = (monthStr.toIntOrNull() ?: 8).coerceIn(1, 12)
-        val y = (yearStr.toIntOrNull() ?: 2026).coerceIn(2020, 2100)
-        val formattedDate = String.format(Locale.getDefault(), "%02d/%02d/%04d", d, mo, y)
-
-        if (formattedDate == defaultDateStr) {
-            val calendar = java.util.Calendar.getInstance(spTimeZone)
-            val currentHour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
-            val currentMinute = calendar.get(java.util.Calendar.MINUTE)
-
-            if (h < currentHour || (h == currentHour && m <= currentMinute)) {
-                // Hora no passado para o dia de hoje, apenas mostra aviso. NAO ALTERA A DATA!
-                autoChangedTimeStr = String.format(Locale.getDefault(), "%02d:%02d", h, m)
-                wasAutoChanged = true
-            } else {
-                wasAutoChanged = false
-            }
-        }
-    }
-
-    LaunchedEffect(dayStr, monthStr, yearStr) {
-        val d = (dayStr.toIntOrNull() ?: 3).coerceIn(1, 31)
-        val mo = (monthStr.toIntOrNull() ?: 8).coerceIn(1, 12)
-        val y = (yearStr.toIntOrNull() ?: 2026).coerceIn(2020, 2100)
-        val formattedDate = String.format(Locale.getDefault(), "%02d/%02d/%04d", d, mo, y)
 
         val calendar = java.util.Calendar.getInstance(spTimeZone)
-        calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
-        val tomorrowStr = todayFormatter.format(calendar.time)
+        val currentHour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
+        val currentMinute = calendar.get(java.util.Calendar.MINUTE)
 
-        if (formattedDate != defaultDateStr) {
+        if (h < currentHour || (h == currentHour && m <= currentMinute)) {
+            autoChangedTimeStr = String.format(Locale.getDefault(), "%02d:%02d", h, m)
+            wasAutoChanged = true
+        } else {
             wasAutoChanged = false
         }
     }
@@ -279,7 +269,8 @@ fun EditReminderDialog(
 
                 if (wasAutoChanged) {
                     Text(
-                        text = "Como $autoChangedTimeStr já passou hoje, o lembrete será agendado para amanhã.",
+                        text = "Como $autoChangedTimeStr já passou da hora agora, ao salvar " +
+                               "este lembrete será agendado para amanhã, no mesmo horário.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = Color(0xFFC62828), // Dark Red for strong contrast
                         fontWeight = FontWeight.Bold,
@@ -307,19 +298,26 @@ fun EditReminderDialog(
                     val m = (minStr.toIntOrNull() ?: 0).coerceIn(0, 59)
                     val formattedTime = String.format("%02d:%02d", h, m)
 
-                    var d = (dayStr.toIntOrNull() ?: 3).coerceIn(1, 31)
-                    var mo = (monthStr.toIntOrNull() ?: 8).coerceIn(1, 12)
-                    var y = (yearStr.toIntOrNull() ?: 2026).coerceIn(2020, 2100)
-                    val inputDateStr = String.format(Locale.getDefault(), "%02d/%02d/%04d", d, mo, y)
-
-                    if (inputDateStr == defaultDateStr && wasAutoChanged) {
-                        val calendar = java.util.Calendar.getInstance(spTimeZone)
-                        calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
-                        d = calendar.get(java.util.Calendar.DAY_OF_MONTH)
-                        mo = calendar.get(java.util.Calendar.MONTH) + 1
-                        y = calendar.get(java.util.Calendar.YEAR)
+                    // A data salva e sempre a PROXIMA OCORRENCIA do horario:
+                    // hoje se ainda nao passou, senao amanha no mesmo horario.
+                    //
+                    // E a mesma regra do AlarmScheduler.nextOccurrenceMillis,
+                    // que e quem de fato agenda. Antes a data vinha dos campos
+                    // do formulario e podia divergir do que ia tocar, alem de
+                    // ser sobrescrita depois pelo resetDailyStatusIfNewDay.
+                    // Com isto a data mostrada passa a dizer a verdade e o
+                    // lembrete rola sozinho para o dia seguinte no mesmo
+                    // horario, sem o usuario refazer nada.
+                    val alvo = java.util.Calendar.getInstance(spTimeZone).apply {
+                        set(java.util.Calendar.HOUR_OF_DAY, h)
+                        set(java.util.Calendar.MINUTE, m)
+                        set(java.util.Calendar.SECOND, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
                     }
-                    val finalDateStr = String.format(Locale.getDefault(), "%02d/%02d/%04d", d, mo, y)
+                    if (alvo.timeInMillis <= System.currentTimeMillis()) {
+                        alvo.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                    }
+                    val finalDateStr = todayFormatter.format(alvo.time)
 
                     onSave(formattedTime, finalDateStr, title.ifBlank { "Hora da Água" })
                 },
