@@ -1,22 +1,53 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Hidrate Já
 
-# Run and deploy your AI Studio app
+Aplicativo Android de lembrete para beber água, feito pensando em pessoas
+idosas: telas grandes, texto direto e um aviso difícil de ignorar.
 
-This contains everything you need to run your app locally.
+## O que ele faz
 
-View your app in AI Studio: https://ai.studio/apps/2c684e3f-548b-41ed-b46e-d5367064dc6d
+- Lembretes em horários fixos, com recorrência diária automática.
+- No horário, toca um som suave e vibra, mostra uma notificação na barra e
+  abre um aviso em tela cheia (a "tela azul") para confirmar com um toque.
+- Três modos de aviso: **som e vibração**, **somente vibrar** ou
+  **silencioso** (apenas a notificação na barra).
+- Registro do consumo com meta diária e mensal, histórico e relatório.
+- Pela própria notificação dá para confirmar que bebeu ou ignorar o lembrete.
 
-## Run Locally
+## Tecnologias
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+- **Kotlin** e **Jetpack Compose** (Material 3)
+- **Room** para o banco local
+- **AlarmManager** com `setAlarmClock` para os alarmes exatos, e um
+  *foreground service* para tocar o som sem o processo ser morto
 
+`minSdk` 24, `targetSdk` 36.
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
-7. If you have already published your app in AI Studio, please [request upload key reset](https://support.google.com/googleplay/android-developer/answer/9842756#zippy=%2Crequest-an-upload-key-reset) in Google Play Console.
+## Como compilar
+
+O projeto precisa do JDK que vem com o Android Studio. Se o `JAVA_HOME` não
+estiver configurado, aponte para o `jbr`:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+```
+
+Depois:
+
+```powershell
+.\gradlew assembleDebug
+```
+
+O APK sai em `app/build/outputs/apk/debug/app-debug.apk`.
+
+Para compilar e instalar direto no aparelho conectado:
+
+```powershell
+.\gradlew installDebug
+```
+
+## Permissões
+
+O app não acessa a internet. As permissões que ele pede existem só para o
+alarme funcionar na hora certa: vibração, wake lock, notificações,
+alarme exato, aviso em tela cheia, *foreground service*, início após o boot e
+isenção de otimização de bateria.

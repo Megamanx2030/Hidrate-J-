@@ -1,6 +1,0 @@
-{
-  "name": "HydraCompanion",
-  "description": "Aplicativo de lembrete de água para idosos com alertas sonoros suave de 5 segundos, vibração, meta diária e mensal e histórico SQLite.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
