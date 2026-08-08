@@ -398,26 +398,11 @@ fun HistoryScreen(
             modifier = Modifier.padding(bottom = 10.dp)
         )
 
-        if (pastDaysData.isEmpty()) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = "Nenhum registro recente de consumo de água.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-        } else {
-            // Only show days with actual logs in the list, unless you want to see empty days
+        run {
+            // pastDaysData sempre tem exatamente 7 itens, entao o antigo
+            // "if (pastDaysData.isEmpty())" era ramo morto e saiu.
             val recentDaysWithLogs = pastDaysData.filter { it.third.isNotEmpty() }
-            
+
             if (recentDaysWithLogs.isEmpty()) {
                 Card(
                     modifier = Modifier
@@ -496,7 +481,9 @@ fun HistoryScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = if (totalMl > 0) litersStr else "Nenhum consumo registrado",
+                                        // A lista ja foi filtrada para dias com
+                                        // registro, entao totalMl e sempre > 0.
+                                        text = litersStr,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -593,18 +580,13 @@ fun HistoryScreen(
             skippedReminders.forEach { reminder ->
                 val dateText = reminder.skippedDate.ifBlank { reminder.date.ifBlank { "Hoje" } }
                 val timeText = reminder.skippedTime.ifBlank { reminder.time }
-                val isRecovered = reminder.isCompleted && !reminder.isSkipped
-                
-                val iconBoxColor = if (isRecovered) SecondaryContainer else ErrorContainer
-                val iconTintColor = if (isRecovered) PrimaryBlue else ErrorRed
-                val iconVector = if (isRecovered) Icons.Default.CheckCircle else Icons.Default.Close
-                val descColor = if (isRecovered) PrimaryBlue else ErrorRed
-                
-                val descText = if (isRecovered) {
-                    "Esqueceu às $timeText, mas bebeu depois às ${reminder.completedTime}"
-                } else {
-                    "Esqueceu de beber em: $dateText às $timeText"
-                }
+
+                // O antigo "isRecovered" era inalcancavel: ao confirmar, o
+                // confirmWaterAlert zera o skippedDate, e o lembrete cai fora
+                // do filtro la em cima, que exige skippedDate preenchido.
+                // A mensagem "Esqueceu as X, mas bebeu depois as Y" nunca
+                // aparecia. Removido junto com as cores condicionais.
+                val descText = "Esqueceu de beber em: $dateText às $timeText"
 
                 Card(
                     modifier = Modifier
@@ -623,13 +605,15 @@ fun HistoryScreen(
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .background(iconBoxColor, CircleShape),
+                                .background(ErrorContainer, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = iconVector,
-                                contentDescription = null,
-                                tint = iconTintColor,
+                                imageVector = Icons.Default.Close,
+                                // O estado nao pode ser indicado so pela cor:
+                                // leitores de tela precisam do rotulo.
+                                contentDescription = "Lembrete esquecido",
+                                tint = ErrorRed,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -648,7 +632,7 @@ fun HistoryScreen(
                             Text(
                                 text = descText,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = descColor,
+                                color = ErrorRed,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis

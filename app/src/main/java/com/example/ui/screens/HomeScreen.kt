@@ -225,10 +225,6 @@ fun HomeScreen(
         ) {
             com.example.ui.components.AnimatedWaterGlass(
                 progress = animatedDummyProgress,
-                cupsDrunk = (animatedDummyProgress * totalCupsTarget).toInt(),
-                totalCupsTarget = totalCupsTarget,
-                todayTotalMl = todayTotalMl,
-                dailyGoalMl = dailyGoalMl,
                 modifier = Modifier
                     .size(260.dp, 260.dp)
                     .clickable(

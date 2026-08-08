@@ -43,20 +43,20 @@ import com.example.ui.theme.PrimaryBlue
 import java.util.Locale
 import kotlin.math.sin
 
+/**
+ * Desenha somente o copo, a onda e a placa "HORA DE BEBER".
+ *
+ * Os numeros (porcentagem, litros e copos) ficam na tela que chama este
+ * componente. Existiam aqui os parametros cupsDrunk e totalCupsTarget e as
+ * variaveis percent, currentLitersStr e goalLitersStr -- todos calculados e
+ * nunca desenhados. Removidos.
+ */
 @Composable
 fun AnimatedWaterGlass(
     progress: Float, // 0.0 to 1.0+
-    cupsDrunk: Int,
-    totalCupsTarget: Int,
-    todayTotalMl: Int = 0,
-    dailyGoalMl: Int = 2000,
     modifier: Modifier = Modifier
 ) {
     val fillLevel = progress.coerceIn(0f, 1f)
-    val percent = (progress * 100).toInt()
-
-    val currentLitersStr = String.format(Locale("pt", "BR"), "%.1fL", todayTotalMl / 1000f)
-    val goalLitersStr = String.format(Locale("pt", "BR"), "%.1fL", dailyGoalMl / 1000f)
 
     // Infinite transition for wave animation
     val transition = rememberInfiniteTransition(label = "water_wave")
