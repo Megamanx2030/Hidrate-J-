@@ -23,6 +23,12 @@ interface WaterLogDao {
     @Query("SELECT SUM(amountMl) FROM water_logs WHERE timestamp >= :startTimeMs AND timestamp <= :endTimeMs")
     fun getSumMlForPeriod(startTimeMs: Long, endTimeMs: Long): Flow<Int?>
 
+    @Query("SELECT * FROM water_logs WHERE dateString = :dateString")
+    suspend fun getLogsForDateOnce(dateString: String): List<WaterLog>
+
+    @Query("DELETE FROM water_logs WHERE dateString = :dateString")
+    suspend fun deleteLogsForDate(dateString: String)
+
     @Query("DELETE FROM water_logs WHERE id = :id")
     suspend fun deleteLogById(id: Int)
 

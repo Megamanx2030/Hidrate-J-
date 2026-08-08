@@ -775,6 +775,56 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Tira o lembrete da lista de "esquecidos" SEM apagar o lembrete.
+     *
+     * O horario e o alarme continuam intactos: some apenas o registro de que
+     * ele foi esquecido, para a lista nao acumular. Apagar o lembrete de
+     * verdade e outra acao, na tela de Lembretes.
+     */
+    fun limparRegistroEsquecido(reminder: Reminder) {
+        viewModelScope.launch {
+            android.util.Log.d("HidrateJa", "Limpando registro de esquecido do lembrete ${reminder.id}")
+            repository.updateReminder(
+                reminder.copy(
+                    isSkipped = false,
+                    skippedDate = "",
+                    skippedTime = ""
+                )
+            )
+        }
+    }
+
+    /**
+     * Apaga o consumo de agua de um dia inteiro.
+     *
+     * Antes de apagar, guarda os ids dos registros para tambem zerar qualquer
+     * lembrete que apontasse para eles pelo waterLogId. Sem isso o lembrete
+     * continuaria marcado como "Bebido" apontando para um registro que nao
+     * existe mais, e o total do dia nao bateria com a tela de lembretes.
+     */
+    fun apagarConsumoDoDia(dateKey: String) {
+        viewModelScope.launch {
+            val logs = db.waterLogDao().getLogsForDateOnce(dateKey)
+            val idsApagados = logs.map { it.id }.toSet()
+            android.util.Log.d("HidrateJa", "Apagando consumo de $dateKey: ${logs.size} registro(s)")
+
+            db.waterLogDao().deleteLogsForDate(dateKey)
+
+            db.reminderDao().getAllRemindersOnce().forEach { reminder ->
+                if (reminder.waterLogId != 0 && idsApagados.contains(reminder.waterLogId)) {
+                    repository.updateReminder(
+                        reminder.copy(
+                            isCompleted = false,
+                            completedTime = "",
+                            waterLogId = 0
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         soundAndVibrationManager.stopAlert()

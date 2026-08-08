@@ -32,6 +32,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -71,7 +72,9 @@ fun HistoryScreen(
     reminders: List<Reminder>,
     dailyGoalMl: Int = 2000,
     onClearHistory: () -> Unit = {},
-    onClearEverything: () -> Unit = {}
+    onClearEverything: () -> Unit = {},
+    onApagarConsumoDoDia: (String) -> Unit = {},
+    onLimparRegistroEsquecido: (Reminder) -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
 
@@ -81,6 +84,10 @@ fun HistoryScreen(
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var deleteRemindersToo by remember { mutableStateOf(false) }
     var showMonthPickerDialog by remember { mutableStateOf(false) }
+
+    // Alvos dos dois modais de exclusao. Guardam o item pendente de confirmacao.
+    var diaParaApagar by remember { mutableStateOf<Pair<String, String>?>(null) } // (rotulo, chave)
+    var esquecidoParaApagar by remember { mutableStateOf<Reminder?>(null) }
 
     // Month picker state (0 = Janeiro, 7 = Agosto, etc.)
     val monthsList = listOf(
@@ -158,6 +165,45 @@ fun HistoryScreen(
             cal.add(Calendar.DAY_OF_YEAR, 1)
         }
         list
+    }
+
+    /**
+     * TODOS os dias do mes escolhido, em sequencia.
+     *
+     * Antes a lista mostrava so os 7 dias da semana atual, e ainda escondia os
+     * dias sem consumo -- por isso parecia que dias eram pulados. Agora vem o
+     * mes inteiro, dia 1 em diante, inclusive os sem registro.
+     *
+     * No mes corrente a lista para em hoje: dias futuros nao tem o que mostrar.
+     * O grafico de gotas continua sendo o da semana (pastDaysData).
+     */
+    val monthDaysData = remember(logs, selectedMonthIndex, selectedYear, currentLocalDate) {
+        val list = mutableListOf<Triple<String, String, List<WaterLog>>>()
+        val cal = Calendar.getInstance(spTimeZone)
+        cal.set(Calendar.DAY_OF_MONTH, 1)
+        cal.set(Calendar.YEAR, selectedYear)
+        cal.set(Calendar.MONTH, selectedMonthIndex)
+
+        val ultimoDia = if (selectedMonthIndex == currentLocalDate.monthValue - 1 &&
+            selectedYear == currentLocalDate.year
+        ) {
+            currentLocalDate.dayOfMonth
+        } else {
+            cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        }
+
+        val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = spTimeZone }
+        val dateFormat = SimpleDateFormat("dd/MM", Locale.getDefault()).apply { timeZone = spTimeZone }
+        val dayNames = arrayOf("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb")
+
+        for (dia in 1..ultimoDia) {
+            cal.set(Calendar.DAY_OF_MONTH, dia)
+            val key = keyFormat.format(cal.time)
+            val label = "${dayNames[cal.get(Calendar.DAY_OF_WEEK) - 1]}, ${dateFormat.format(cal.time)}"
+            list.add(Triple(label, key, groupedLogs[key] ?: emptyList()))
+        }
+        // Mais recente primeiro: o idoso ve o dia de hoje sem rolar a tela.
+        list.reversed()
     }
 
     // Chart fill ratios for past 7 days (oldest to newest)
@@ -389,9 +435,8 @@ fun HistoryScreen(
 
         // Recent Days Section (Dynamically logged with timestamps)
         Text(
-            // O titulo dizia "Dias do Mes", mas a lista so tem os 7 dias da
-            // semana selecionada.
-            text = "Dias da Semana (com horários)",
+            // Voltou a ser "do Mes" porque a lista agora e do mes inteiro.
+            text = "Dias do Mês (com horários)",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
@@ -399,9 +444,9 @@ fun HistoryScreen(
         )
 
         run {
-            // pastDaysData sempre tem exatamente 7 itens, entao o antigo
-            // "if (pastDaysData.isEmpty())" era ramo morto e saiu.
-            val recentDaysWithLogs = pastDaysData.filter { it.third.isNotEmpty() }
+            // Os dias sem consumo NAO sao mais escondidos: era isso que dava a
+            // impressao de que o historico pulava dias.
+            val recentDaysWithLogs = monthDaysData
 
             if (recentDaysWithLogs.isEmpty()) {
                 Card(
@@ -420,7 +465,7 @@ fun HistoryScreen(
                     )
                 }
             } else {
-                recentDaysWithLogs.forEach { (dateDisplay, _, dayLogs) ->
+                recentDaysWithLogs.forEach { (dateDisplay, dateKey, dayLogs) ->
                     val totalMl = dayLogs.sumOf { it.amountMl }
                 val goalReached = totalMl >= dailyGoalMl
                 val litersStr = String.format(Locale("pt", "BR"), "%.1f Litros", totalMl / 1000f)
@@ -481,9 +526,8 @@ fun HistoryScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        // A lista ja foi filtrada para dias com
-                                        // registro, entao totalMl e sempre > 0.
-                                        text = litersStr,
+                                        // A lista agora inclui dias sem consumo.
+                                        text = if (totalMl > 0) litersStr else "Nenhum consumo registrado",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -502,7 +546,7 @@ fun HistoryScreen(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
                                             imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
+                                            contentDescription = "Meta do dia atingida",
                                             tint = Color.White,
                                             modifier = Modifier.size(14.dp)
                                         )
@@ -514,6 +558,22 @@ fun HistoryScreen(
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
+                                }
+                            }
+
+                            // Lixeira do dia. So aparece quando ha o que apagar.
+                            if (dayLogs.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = { diaParaApagar = dateDisplay to dateKey },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Apagar o consumo de $dateDisplay",
+                                        tint = ErrorRed,
+                                        modifier = Modifier.size(26.dp)
+                                    )
                                 }
                             }
                         }
@@ -602,20 +662,26 @@ fun HistoryScreen(
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(ErrorContainer, CircleShape),
-                            contentAlignment = Alignment.Center
+                        // O X virou lixeira e passou a ser tocavel: apaga o
+                        // registro de esquecido para a lista nao acumular.
+                        IconButton(
+                            onClick = { esquecidoParaApagar = reminder },
+                            modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                // O estado nao pode ser indicado so pela cor:
-                                // leitores de tela precisam do rotulo.
-                                contentDescription = "Lembrete esquecido",
-                                tint = ErrorRed,
-                                modifier = Modifier.size(24.dp)
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .background(ErrorContainer, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription =
+                                        "Apagar o aviso de esquecido de ${reminder.title} das $timeText",
+                                    tint = ErrorRed,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(12.dp))
@@ -644,6 +710,84 @@ fun HistoryScreen(
         }
 
         Spacer(modifier = Modifier.height(100.dp))
+    }
+
+    // Confirmacao para apagar o consumo de um dia
+    diaParaApagar?.let { (rotulo, chave) ->
+        AlertDialog(
+            onDismissRequest = { diaParaApagar = null },
+            title = { Text("Apagar este dia?", fontWeight = FontWeight.Bold, color = ErrorRed) },
+            text = {
+                Text(
+                    text = "Os registros de água de $rotulo serão apagados. Esta ação não pode ser desfeita.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onApagarConsumoDoDia(chave)
+                        diaParaApagar = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Sim, apagar", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { diaParaApagar = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Não", fontWeight = FontWeight.Bold)
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Confirmacao para apagar o aviso de esquecido
+    esquecidoParaApagar?.let { reminder ->
+        val hora = reminder.skippedTime.ifBlank { reminder.time }
+        AlertDialog(
+            onDismissRequest = { esquecidoParaApagar = null },
+            title = { Text("Apagar este aviso?", fontWeight = FontWeight.Bold, color = ErrorRed) },
+            text = {
+                Text(
+                    // Deixa explicito que o lembrete NAO some, senao o idoso
+                    // pensa que apagou o alarme das $hora.
+                    text = "O aviso de que você esqueceu de beber às $hora sai da lista.\n\n" +
+                           "O lembrete das $hora continua salvo e vai tocar normalmente.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onLimparRegistroEsquecido(reminder)
+                        esquecidoParaApagar = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Sim, apagar", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { esquecidoParaApagar = null },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Não", fontWeight = FontWeight.Bold)
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 
     // Confirmation Dialog for Clearing History

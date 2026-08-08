@@ -169,7 +169,9 @@ fun HydraApp(viewModel: MainViewModel) {
                         reminders = reminders,
                         dailyGoalMl = settings.dailyGoalMl,
                         onClearHistory = { viewModel.clearHistory() },
-                        onClearEverything = { viewModel.clearEverything() }
+                        onClearEverything = { viewModel.clearEverything() },
+                        onApagarConsumoDoDia = { dateKey -> viewModel.apagarConsumoDoDia(dateKey) },
+                        onLimparRegistroEsquecido = { reminder -> viewModel.limparRegistroEsquecido(reminder) }
                     )
                     2 -> RemindersScreen(
                         settings = settings,
