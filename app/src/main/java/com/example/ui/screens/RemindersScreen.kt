@@ -335,7 +335,9 @@ fun RemindersScreen(
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
-                                    fontSize = 11.sp
+                                    // Era 11sp por sobrescrita local, o que
+                                    // anulava a escala do tema.
+                                    fontSize = 15.sp
                                 )
                             }
                         }

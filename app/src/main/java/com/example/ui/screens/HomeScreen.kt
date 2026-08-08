@@ -86,8 +86,21 @@ fun HomeScreen(
     val totalCupsTarget = (dailyGoalMl / glassSizeMl).coerceAtLeast(1)
     val dailyProgress = (todayTotalMl.toFloat() / dailyGoalMl.toFloat()).coerceIn(0f, 1f)
 
+    /**
+     * NUMERO NA TELA NAO PODE MENTIR.
+     *
+     * Antes, tocar no copo enchia a agua ate 100% enquanto o "%" logo abaixo
+     * continuava no valor real. Copo cheio com "20%" embaixo e leitura errada
+     * -- e um idoso que leia "100%" no segundo errado pode parar de beber
+     * agua no dia.
+     *
+     * Agora a agua sobe no maximo 10% acima do nivel real e volta sozinha
+     * depois de 4 segundos. O toque continua dando resposta visual, e nenhum
+     * numero da tela muda: eles vem sempre de todayTotalMl.
+     */
+    val TETO_ANIMACAO = 0.10f
+
     var dummyProgress by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(dailyProgress) }
-    var isEmptying by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     var touchCount by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(0) }
 
     androidx.compose.runtime.LaunchedEffect(dailyProgress) {
@@ -100,7 +113,6 @@ fun HomeScreen(
         if (touchCount > 0) {
             kotlinx.coroutines.delay(4000)
             dummyProgress = dailyProgress
-            isEmptying = false
             touchCount = 0
         }
     }
@@ -231,20 +243,10 @@ fun HomeScreen(
                         interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                         indication = null,
                         onClick = {
+                            // Sobe ate o teto e volta sozinho. Cada toque
+                            // reinicia a contagem dos 4 segundos.
                             touchCount++
-                            if (!isEmptying) {
-                                dummyProgress += 0.2f
-                                if (dummyProgress >= 1f) {
-                                    dummyProgress = 1f
-                                    isEmptying = true
-                                }
-                            } else {
-                                dummyProgress -= 0.2f
-                                if (dummyProgress <= 0f) {
-                                    dummyProgress = 0f
-                                    isEmptying = false
-                                }
-                            }
+                            dummyProgress = (dailyProgress + TETO_ANIMACAO).coerceAtMost(1f)
                         }
                     )
             )
