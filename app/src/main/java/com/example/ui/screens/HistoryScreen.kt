@@ -125,6 +125,13 @@ fun HistoryScreen(
     val pastDaysData = remember(logs, dailyGoalMl, selectedMonthIndex, selectedYear, currentLocalDate) {
         val list = mutableListOf<Triple<String, String, List<WaterLog>>>() // (formattedDateStr, dateKey, dayLogs)
         val cal = Calendar.getInstance(spTimeZone)
+        // O DIA 1 TEM QUE VIR ANTES DO ANO E DO MES.
+        //
+        // Antes o ano e o mes eram definidos primeiro, com o dia ainda no
+        // valor de hoje. Se hoje fosse 31 e o usuario escolhesse fevereiro,
+        // o Calendar transbordava para marco antes mesmo do getActualMaximum
+        // ser chamado, e a semana exibida era a errada.
+        cal.set(Calendar.DAY_OF_MONTH, 1)
         cal.set(Calendar.YEAR, selectedYear)
         cal.set(Calendar.MONTH, selectedMonthIndex)
         // Set to current day of month or last day if in past
@@ -382,7 +389,9 @@ fun HistoryScreen(
 
         // Recent Days Section (Dynamically logged with timestamps)
         Text(
-            text = "Dias do Mês (com horários)",
+            // O titulo dizia "Dias do Mes", mas a lista so tem os 7 dias da
+            // semana selecionada.
+            text = "Dias da Semana (com horários)",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
