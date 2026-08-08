@@ -167,7 +167,8 @@ fun HomeScreen(
             IconButton(
                 onClick = onOpenSettings,
                 modifier = Modifier
-                    .size(44.dp)
+                    // 48dp e o minimo recomendado de alvo de toque; estava 44dp.
+                    .size(48.dp)
                     .background(Color.White, CircleShape)
                     .testTag("settings_button")
             ) {

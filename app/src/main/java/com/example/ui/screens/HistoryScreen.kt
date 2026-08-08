@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -203,7 +204,11 @@ fun HistoryScreen(
             OutlinedButton(
                 onClick = { showMonthPickerDialog = true },
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.weight(1f),
+                // O botao padrao do Material3 tem 40dp de altura; 48dp e o
+                // minimo recomendado de alvo de toque.
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp),
                 colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
                 contentPadding = ButtonDefaults.ContentPadding
             ) {
@@ -227,6 +232,7 @@ fun HistoryScreen(
             OutlinedButton(
                 onClick = { showClearConfirmDialog = true },
                 shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
                 colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = ErrorRed),
                 contentPadding = ButtonDefaults.ContentPadding
             ) {
@@ -729,6 +735,9 @@ fun HistoryScreen(
                                         .clickable {
                                             selectedMonthIndex = mIdx
                                         }
+                                        // Antes so o padding de 10dp definia a
+                                        // altura, dando cerca de 40dp.
+                                        .heightIn(min = 48.dp)
                                         .padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
