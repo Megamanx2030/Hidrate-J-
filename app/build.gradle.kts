@@ -37,6 +37,21 @@ android {
     }
   }
   compileOptions {
+    /**
+     * SEM ISTO O APP QUEBRA NO ANDROID 7.
+     *
+     * O codigo usa java.time (LocalDate, LocalTime, ZoneId, DateTimeFormatter,
+     * Duration) em 6 arquivos -- inclusive no init da MainViewModel e no
+     * BootCompleteReceiver. Essas classes so existem a partir do Android 8
+     * (API 26), mas o minSdk e 24: a Play Store ofereceria o app para Android
+     * 7.0 e 7.1, onde ele estouraria NoClassDefFoundError logo na abertura.
+     * O lint apontava 126 erros de NewApi por causa disso.
+     *
+     * O desugaring da biblioteca padrao embute uma implementacao dessas classes
+     * no proprio APK. Com ele, o java.time funciona ate no Android 7 e o
+     * alcance do app continua sendo o minSdk 24.
+     */
+    isCoreLibraryDesugaringEnabled = true
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
@@ -60,6 +75,7 @@ android {
 // revisao da Play Store e obriga a declarar coleta de dados no formulario de
 // Seguranca dos Dados.
 dependencies {
+  coreLibraryDesugaring(libs.desugar.jdk.libs)
   implementation(platform(libs.androidx.compose.bom))
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
