@@ -45,12 +45,24 @@ class WaterRepository(
 
     val totalDeRegistros: Flow<Int> = waterLogDao.contarLogs()
 
-    fun getTodayLogs(): Flow<List<WaterLog>> {
-        return waterLogDao.getLogsForDate(getTodayDateString())
+    /**
+     * O DIA VEM DE FORA, NAO E LIDO AQUI DENTRO.
+     *
+     * Antes estas funcoes chamavam getTodayDateString() na hora de montar a
+     * consulta, e o resultado ficava GRAVADO no Flow. Como a MainViewModel cria
+     * esses Flows uma unica vez, o app aberto durante a virada da meia-noite
+     * continuava somando a agua de ONTEM: o contador nao zerava e a meta do dia
+     * novo comecava ja cheia.
+     *
+     * Recebendo a data por parametro, quem manda no dia e a ViewModel -- que
+     * observa a virada e refaz a consulta.
+     */
+    fun getLogsForDate(dateString: String): Flow<List<WaterLog>> {
+        return waterLogDao.getLogsForDate(dateString)
     }
 
-    fun getTodayTotalMl(): Flow<Int> {
-        return waterLogDao.getDailySumMl(getTodayDateString()).map { it ?: 0 }
+    fun getTotalMlForDate(dateString: String): Flow<Int> {
+        return waterLogDao.getDailySumMl(dateString).map { it ?: 0 }
     }
 
     fun getMonthlyTotalMl(): Flow<Int> {

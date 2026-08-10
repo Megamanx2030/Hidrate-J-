@@ -40,21 +40,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = UserSettings()
         )
 
-    val todayLogs: StateFlow<List<WaterLog>> = repository.getTodayLogs()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    /**
+     * O DIA DE HOJE COMO ESTADO, E NAO COMO UM VALOR LIDO UMA VEZ.
+     *
+     * ISTO E O QUE ZERA A META NA VIRADA DO DIA.
+     *
+     * Antes o todayTotalMl era criado uma vez, no nascimento da ViewModel, com
+     * a data daquele instante gravada dentro da consulta. Quem deixasse o app
+     * aberto (ou so em segundo plano, que e o normal num app de lembrete)
+     * atravessando a meia-noite continuava vendo a agua de ONTEM somada: a
+     * jarra ficava cheia, a porcentagem nao voltava para 0% e a meta do dia
+     * novo ja comecava batida.
+     *
+     * Agora o dia e um estado observado. Quando ele muda, a consulta e refeita
+     * sozinha para a data nova -- e como os registros sao gravados por dia, o
+     * total do dia novo comeca naturalmente em zero. O mesmo gatilho reaproveita
+     * a virada para zerar o status dos lembretes e rearmar os alarmes.
+     */
+    private val _diaDeHoje = MutableStateFlow(repository.getTodayDateString())
 
-    val todayTotalMl: StateFlow<Int> = repository.getTodayTotalMl()
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val todayTotalMl: StateFlow<Int> = _diaDeHoje
+        .flatMapLatest { dia -> repository.getTotalMlForDate(dia) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = 0
         )
 
-    val monthlyTotalMl: StateFlow<Int> = repository.getMonthlyTotalMl()
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val monthlyTotalMl: StateFlow<Int> = _diaDeHoje
+        .flatMapLatest { repository.getMonthlyTotalMl() }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -160,6 +176,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Create notification channel early
         NotificationHelper(application)
 
+        observarViradaDoDia()
+
         // Verificador de 3 em 3 segundos, rede de seguranca para quando o
         // AlarmManager atrasa com o app JA ABERTO na frente do usuario.
         // Som e vibracao continuam sendo do AlarmManager + WaterAlarmService.
@@ -201,6 +219,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Chamado pelo onResume/onPause da MainActivity. */
     fun definirAppEmPrimeiroPlano(emPrimeiroPlano: Boolean) {
         _appEmPrimeiroPlano.value = emPrimeiroPlano
+    }
+
+    /**
+     * Vigia da virada do dia.
+     *
+     * O reset ja existia, mas so rodava ao criar a ViewModel e no onResume --
+     * ou seja, dependia do usuario ABRIR o app depois da meia-noite. Quem
+     * deixasse o telefone de lado via, na manha seguinte, a agua de ontem ainda
+     * somada e a meta ja batida.
+     *
+     * Aqui a virada e percebida sozinha. Meio minuto de folga e de sobra: nao
+     * existe nada urgente acontecendo a meia-noite, e um laco mais apertado so
+     * gastaria bateria.
+     */
+    private fun observarViradaDoDia() {
+        viewModelScope.launch {
+            while (true) {
+                delay(30_000)
+                val hoje = repository.getTodayDateString()
+                if (_diaDeHoje.value != hoje) {
+                    android.util.Log.d("HidrateJa", "Virou o dia: ${_diaDeHoje.value} -> $hoje")
+                    _diaDeHoje.value = hoje
+                    resetDailyStatusIfNewDay()
+                    markMissedRemindersAsSkipped()
+                    scheduleAllReminders()
+                }
+            }
+        }
     }
 
     /**
@@ -334,6 +380,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isAlertVisible.value) {
             android.util.Log.d("HidrateJa", "onResume: alerta ja visivel, nao checa")
             return
+        }
+        // Voltar ao app depois da meia-noite tem que refazer a consulta do dia
+        // na mesma hora, sem esperar o proximo giro do vigia.
+        val hoje = repository.getTodayDateString()
+        if (_diaDeHoje.value != hoje) {
+            android.util.Log.d("HidrateJa", "onResume: dia mudou para $hoje")
+            _diaDeHoje.value = hoje
         }
         viewModelScope.launch {
             android.util.Log.d("HidrateJa", "onResume: virada de dia + alerta perdido")
