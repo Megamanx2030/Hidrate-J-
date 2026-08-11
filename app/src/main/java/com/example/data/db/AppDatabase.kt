@@ -7,10 +7,21 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+/**
+ * exportSchema PASSOU A SER true, e isso e uma correcao, nao um detalhe.
+ *
+ * Com ele desligado o Room nao guardava o retrato de nenhuma versao do banco.
+ * Foi exatamente por isso que as migracoes das versoes 1 a 5 se perderam: nao
+ * existe registro de como aquelas tabelas eram, nem no codigo nem no historico
+ * do git (o commit mais antigo deste repositorio ja nasce na versao 6).
+ *
+ * A partir daqui cada versao fica gravada em app/schemas. Quem for escrever a
+ * migracao da 9 para a 10 vai ter o antes e o depois na mao.
+ */
 @Database(
     entities = [WaterLog::class, Reminder::class, UserSettings::class],
     version = 9,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun waterLogDao(): WaterLogDao
@@ -62,7 +73,37 @@ abstract class AppDatabase : RoomDatabase() {
                     "hydracompanion_db"
                 )
                 .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
-                .fallbackToDestructiveMigration()
+                /**
+                 * O FALLBACK DEIXOU DE SER GERAL.
+                 *
+                 * Antes era .fallbackToDestructiveMigration() sem argumento:
+                 * QUALQUER versao sem migracao fazia o Room apagar o banco
+                 * inteiro, calado. Numa versao publicada isso significa que
+                 * subir o version para 10 e esquecer a migracao apagaria o
+                 * historico de agua de todos os usuarios, sem erro, sem aviso,
+                 * sem volta. O desenvolvedor so descobriria pelas avaliacoes.
+                 *
+                 * Agora ele vale SO para as versoes 1 a 4, que sao as unicas
+                 * que nao tem como ser migradas: o esquema delas nao existe em
+                 * lugar nenhum (ver o comentario do exportSchema acima), e o
+                 * app nunca foi publicado, entao ninguem no mundo tem um banco
+                 * nessas versoes.
+                 *
+                 * A 5 NAO entra na lista, e o Room e rigoroso quanto a isso:
+                 * como existe MIGRATION_5_6, listar a 5 aqui seria dizer duas
+                 * coisas contrarias sobre a mesma versao. O Room recusa na hora
+                 * de abrir o banco, com "Inconsistency detected" -- e o app nem
+                 * chega a mostrar a primeira tela.
+                 *
+                 * Da 5 em diante, faltar migracao agora ESTOURA na hora de
+                 * abrir o banco. E o comportamento certo: falha barulhenta no
+                 * teste do desenvolvedor em vez de perda silenciosa no celular
+                 * do usuario.
+                 */
+                .fallbackToDestructiveMigrationFrom(
+                    dropAllTables = true,
+                    startVersions = intArrayOf(1, 2, 3, 4)
+                )
                 .build()
                 INSTANCE = instance
                 instance

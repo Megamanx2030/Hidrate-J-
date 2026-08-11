@@ -1,10 +1,11 @@
 package com.example.alarm
 
+import com.example.utils.Registro
+
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -35,13 +36,9 @@ import kotlinx.coroutines.launch
  */
 class WaterReminderReceiver : BroadcastReceiver() {
 
-    private companion object {
-        const val TAG = "HidrateJa"
-    }
-
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getIntExtra("reminder_id", -1)
-        Log.d(TAG, "Receiver.onReceive reminderId=$reminderId")
+        Registro.d("Receiver.onReceive reminderId=$reminderId")
         if (reminderId == -1) return
 
         val chimeType = intent.getStringExtra("chime_type") ?: "Sino Suave"
@@ -63,9 +60,9 @@ class WaterReminderReceiver : BroadcastReceiver() {
                 putExtra(WaterAlarmService.EXTRA_TIME, time)
             }
             ContextCompat.startForegroundService(context, serviceIntent)
-            Log.d(TAG, "FGS iniciado OK")
+            Registro.d("FGS iniciado OK")
         } catch (e: Exception) {
-            Log.e(TAG, "FGS FALHOU: ${e.javaClass.simpleName}: ${e.message}")
+            Registro.e("FGS FALHOU: ${e.javaClass.simpleName}: ${e.message}")
             e.printStackTrace()
         }
 
@@ -90,7 +87,7 @@ class WaterReminderReceiver : BroadcastReceiver() {
                         title = title
                     )
                 } else {
-                    Log.w(TAG, "Lembrete $reminderId nao existe mais: cancelando o alarme orfao")
+                    Registro.w("Lembrete $reminderId nao existe mais: cancelando o alarme orfao")
                     AlarmScheduler(context).cancelReminder(reminderId)
                     DisparoAlarmePrefs.limpar(context)
                 }
@@ -117,7 +114,7 @@ class WaterReminderReceiver : BroadcastReceiver() {
         // Modo silencioso (os dois interruptores desligados): so a notificacao
         // na barra, sem tela azul. Vale para bloqueado e desbloqueado.
         if (!AlertModePrefs.deveMostrarTelaAzul(context)) {
-            Log.d(TAG, "Modo silencioso -> so notificacao na barra, sem tela azul")
+            Registro.d("Modo silencioso -> so notificacao na barra, sem tela azul")
             return
         }
 
@@ -125,7 +122,7 @@ class WaterReminderReceiver : BroadcastReceiver() {
         val bloqueado = keyguard?.isKeyguardLocked ?: false
 
         if (bloqueado) {
-            Log.d(TAG, "Tela bloqueada -> deixando com o setFullScreenIntent")
+            Registro.d("Tela bloqueada -> deixando com o setFullScreenIntent")
             return
         }
 
@@ -135,9 +132,9 @@ class WaterReminderReceiver : BroadcastReceiver() {
         // caminho no log para nao confundir a leitura depois.
         val podeSobrepor = AlarmPermissionHelper.canDrawOverlays(context)
         if (podeSobrepor) {
-            Log.d(TAG, "Tela desbloqueada, canDrawOverlays=true -> startActivity com isencao de BAL")
+            Registro.d("Tela desbloqueada, canDrawOverlays=true -> startActivity com isencao de BAL")
         } else {
-            Log.w(TAG, "Tela desbloqueada, canDrawOverlays=FALSE -> startActivity deve ser bloqueado; so a notificacao vai aparecer")
+            Registro.w("Tela desbloqueada, canDrawOverlays=FALSE -> startActivity deve ser bloqueado; so a notificacao vai aparecer")
         }
 
         try {
@@ -149,9 +146,9 @@ class WaterReminderReceiver : BroadcastReceiver() {
                 putExtra("alert_timestamp", System.currentTimeMillis())
             }
             context.startActivity(activityIntent)
-            Log.d(TAG, "startActivity retornou sem excecao (nao garante que abriu; a prova e o MainActivity.handleIntent)")
+            Registro.d("startActivity retornou sem excecao (nao garante que abriu; a prova e o MainActivity.handleIntent)")
         } catch (e: Exception) {
-            Log.e(TAG, "startActivity BLOQUEADO: ${e.javaClass.simpleName}: ${e.message}")
+            Registro.e("startActivity BLOQUEADO: ${e.javaClass.simpleName}: ${e.message}")
             e.printStackTrace()
         }
     }

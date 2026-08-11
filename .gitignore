@@ -20,3 +20,9 @@ debug.keystore
 
 # Ajustes locais do Claude Code (caminhos de sessao, nao servem para o projeto)
 .claude/
+
+# Assinatura de publicacao. NUNCA versionar: quem tiver estes arquivos e a
+# senha consegue publicar atualizacoes se passando por voce.
+keystore.properties
+*.jks
+*.keystore

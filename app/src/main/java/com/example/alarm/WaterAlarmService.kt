@@ -1,5 +1,7 @@
 package com.example.alarm
 
+import com.example.utils.Registro
+
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
@@ -31,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * isso: trabalho curto, critico e nao adiavel.
  *
  * Iniciar FGS a partir do background normalmente e proibido, mas alarmes
- * exatos (setExactAndAllowWhileIdle com SCHEDULE_EXACT_ALARM/USE_EXACT_ALARM)
+ * exatos (setExactAndAllowWhileIdle com SCHEDULE_EXACT_ALARM)
  * sao uma das excecoes documentadas. Por isso funciona aqui.
  */
 class WaterAlarmService : Service() {
@@ -143,7 +145,7 @@ class WaterAlarmService : Service() {
             val nm = getSystemService(NotificationManager::class.java)
             nm?.notify(reminderId, notification)
         } catch (e: Exception) {
-            android.util.Log.e("HidrateJa", "Falha ao postar notificacao: ${e.message}")
+            Registro.e("Falha ao postar notificacao: ${e.message}")
             e.printStackTrace()
         }
 
@@ -161,7 +163,7 @@ class WaterAlarmService : Service() {
                 true // na duvida, avisa: perder um lembrete e pior que avisar demais
             }
             if (!lembreteExiste) {
-                android.util.Log.w("HidrateJa", "Lembrete $reminderId nao existe mais: alarme ignorado")
+                Registro.w("Lembrete $reminderId nao existe mais: alarme ignorado")
                 DisparoAlarmePrefs.limpar(applicationContext)
                 finishAlarm(removerNotificacao = true, reminderId = reminderId)
                 return@launch
@@ -186,9 +188,7 @@ class WaterAlarmService : Service() {
                 finishAlarm(removerNotificacao = false, reminderId = reminderId)
             }
 
-            android.util.Log.d(
-                "HidrateJa",
-                "Service modo: vibrateOnly=$vibrateOnly alertsEnabled=$alertsEnabled"
+            Registro.d("Service modo: vibrateOnly=$vibrateOnly alertsEnabled=$alertsEnabled"
             )
 
             when {

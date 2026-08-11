@@ -1,5 +1,7 @@
 package com.example
 
+import com.example.utils.Registro
+
 import android.Manifest
 import android.app.KeyguardManager
 import android.content.Context
@@ -24,10 +26,6 @@ import com.example.ui.theme.HydraCompanionTheme
 
 class MainActivity : ComponentActivity() {
 
-    private companion object {
-        const val TAG = "HidrateJa"
-    }
-
     private val viewModel: MainViewModel by viewModels()
 
     // Evita repetir o aviso a cada volta para o app dentro da mesma sessao.
@@ -42,7 +40,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         val veioDoAlarme = intent?.getBooleanExtra("from_notification", false) == true
-        android.util.Log.d(TAG, "MainActivity.onCreate veioDoAlarme=$veioDoAlarme")
+        Registro.d("MainActivity.onCreate veioDoAlarme=$veioDoAlarme")
 
         // O splash do sistema sai na hora: quem segura a marca na tela agora e a
         // AberturaAnimada, desenhada em Compose. Prender o splash do sistema
@@ -101,7 +99,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        android.util.Log.d(TAG, "MainActivity.onResume")
+        Registro.d("MainActivity.onResume")
         viewModel.definirAppEmPrimeiroPlano(true)
 
         // Abrir o app pelo icone com a task ja existente NAO recria a Activity
@@ -117,7 +115,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
-        android.util.Log.d(TAG, "MainActivity.onNewIntent")
+        Registro.d("MainActivity.onNewIntent")
         setIntent(intent)
         handleIntent(intent)
     }
@@ -133,17 +131,14 @@ class MainActivity : ComponentActivity() {
             val isTooOld = System.currentTimeMillis() - alertTimestamp > 2 * 60 * 1000
             val jaVisivel = viewModel.isAlertVisible.value
 
-            android.util.Log.d(
-                TAG,
-                "MainActivity.handleIntent reminderId=$reminderId isTooOld=$isTooOld jaVisivel=$jaVisivel"
-            )
+            Registro.d("MainActivity.handleIntent reminderId=$reminderId isTooOld=$isTooOld jaVisivel=$jaVisivel")
 
             if (reminderId != -1 && !isTooOld && !jaVisivel) {
                 // O WaterAlarmService ja esta tocando o som, entao aqui
                 // so exibimos a tela azul.
                 viewModel.triggerWaterAlert(reminderId, playMedia = false)
             } else {
-                android.util.Log.d(TAG, "MainActivity.handleIntent NAO abriu a tela azul")
+                Registro.d("MainActivity.handleIntent NAO abriu a tela azul")
             }
         }
     }
@@ -192,11 +187,22 @@ class MainActivity : ComponentActivity() {
                 "Toque em LIBERAR e ative a opção que aparecer.",
                 { AlarmPermissionHelper.openFullScreenIntentSettings(this) }
             )
+            // O TEXTO MUDOU JUNTO COM O CAMINHO.
+            //
+            // Antes o botao abria uma caixinha "permitir?" e um toque resolvia.
+            // Aquele atalho exigia uma permissao que a Play Store nao aceita
+            // neste tipo de app, entao agora o botao abre a LISTA de todos os
+            // aplicativos. Sem o passo a passo escrito, a pessoa chega numa
+            // lista enorme e nao sabe o que fazer.
             else -> Pair(
                 "O celular está economizando bateria e pode desligar os lembretes " +
                 "quando o aplicativo ficar um tempo fechado.\n\n" +
-                "Toque em LIBERAR e escolha PERMITIR.",
-                { AlarmPermissionHelper.requestIgnoreBatteryOptimizations(this) }
+                "Toque em LIBERAR. Vai abrir uma lista de aplicativos:\n\n" +
+                "1) Procure por Hidrate Já na lista\n" +
+                "2) Toque no nome dele\n" +
+                "3) Escolha Não otimizar (ou Não restringir)\n\n" +
+                "Depois é só voltar para cá.",
+                { AlarmPermissionHelper.abrirListaDeOtimizacaoDeBateria(this) }
             )
         }
 

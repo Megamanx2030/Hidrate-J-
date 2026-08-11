@@ -1,5 +1,7 @@
 package com.example.alarm
 
+import com.example.utils.Registro
+
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -16,13 +18,9 @@ import java.util.TimeZone
 
 class NotificationActionReceiver : BroadcastReceiver() {
 
-    private companion object {
-        const val TAG = "HidrateJa"
-    }
-
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getIntExtra("reminder_id", -1)
-        android.util.Log.d(TAG, "NotificationAction acao=${intent.action} reminderId=$reminderId")
+        Registro.d("NotificationAction acao=${intent.action} reminderId=$reminderId")
 
         // FECHA A NOTIFICACAO IMEDIATAMENTE, SEM DEPENDER DO SERVICO.
         //
@@ -62,7 +60,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 //
                 // Quem marca na hora e o botao "❌ Ignorar"
                 // (ACTION_IGNORE_WATER), onde houve decisao explicita.
-                android.util.Log.d(TAG, "Notificacao dispensada: segue PENDENTE (nao marca esquecido)")
+                Registro.d("Notificacao dispensada: segue PENDENTE (nao marca esquecido)")
                 return
             }
             "ACTION_CONFIRM_WATER" -> {
@@ -110,15 +108,13 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                 waterLogId = logId.toInt()
                             )
                         )
-                        android.util.Log.d(
-                            TAG,
-                            "Bebi Agua registrado: ${glassSizeMl}ml em ${waterLog.dateString}, logId=$logId"
+                        Registro.d("Bebi Agua registrado: ${glassSizeMl}ml em ${waterLog.dateString}, logId=$logId"
                         )
                     } else {
-                        android.util.Log.d(TAG, "Bebi Agua ignorado: lembrete ausente ou ja concluido")
+                        Registro.d("Bebi Agua ignorado: lembrete ausente ou ja concluido")
                     }
                   } catch (e: Exception) {
-                    android.util.Log.e(TAG, "Falha ao registrar Bebi Agua: ${e.message}")
+                    Registro.e("Falha ao registrar Bebi Agua: ${e.message}")
                     e.printStackTrace()
                   } finally {
                     pendingResult.finish()
@@ -130,7 +126,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 // Decisao explicita do usuario: marca esquecido na hora.
                 // Mesmo goAsync do confirmar, pelo mesmo motivo: sem ele a
                 // gravacao podia nao chegar a acontecer.
-                android.util.Log.d(TAG, "Botao Ignorar: marcando como esquecido agora")
+                Registro.d("Botao Ignorar: marcando como esquecido agora")
                 val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {
                   try {
@@ -153,7 +149,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         )
                     }
                   } catch (e: Exception) {
-                    android.util.Log.e(TAG, "Falha ao marcar esquecido: ${e.message}")
+                    Registro.e("Falha ao marcar esquecido: ${e.message}")
                     e.printStackTrace()
                   } finally {
                     pendingResult.finish()

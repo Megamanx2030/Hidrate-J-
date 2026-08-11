@@ -1,3 +1,7 @@
+// Import explicito: dentro do bloco android {} o nome "java" e capturado pela
+// extensao do Gradle, e java.util.Properties deixa de resolver.
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -18,13 +22,39 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  /**
+   * ASSINATURA DE PUBLICACAO.
+   *
+   * O bloco anterior lia a senha de variaveis de ambiente que nunca eram
+   * definidas, entao storePassword ficava nulo e o release acabava assinado com
+   * a CHAVE DE DEPURACAO (CN=Android Debug). A Play Store recusa esses arquivos
+   * de cara.
+   *
+   * Agora os dados vem de keystore.properties, que fica na raiz do projeto e
+   * esta no .gitignore. O proprio .jks mora FORA do repositorio, e o caminho
+   * ate ele e absoluto: assim nem o arquivo nem as senhas tem como escapar num
+   * "git add ." distraido.
+   *
+   * Sem o keystore.properties o projeto continua compilando (util para quem so
+   * quer rodar o debug), mas o release sai SEM assinatura de publicacao, e o
+   * aviso abaixo explica o porque.
+   */
+  val arquivoDeAssinatura = rootProject.file("keystore.properties")
+  val dadosDeAssinatura = Properties().apply {
+    if (arquivoDeAssinatura.exists()) {
+      arquivoDeAssinatura.inputStream().use { load(it) }
+    }
+  }
+  val temAssinaturaDePublicacao = dadosDeAssinatura.getProperty("storeFile") != null
+
   signingConfigs {
-    create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+    if (temAssinaturaDePublicacao) {
+      create("release") {
+        storeFile = file(dadosDeAssinatura.getProperty("storeFile"))
+        storePassword = dadosDeAssinatura.getProperty("storePassword")
+        keyAlias = dadosDeAssinatura.getProperty("keyAlias")
+        keyPassword = dadosDeAssinatura.getProperty("keyPassword")
+      }
     }
   }
 
@@ -33,7 +63,15 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("debug")
+      signingConfig = if (temAssinaturaDePublicacao) {
+        signingConfigs.getByName("release")
+      } else {
+        logger.warn(
+          "AVISO: keystore.properties nao encontrado. O release vai sair com a " +
+          "chave de depuracao e a Play Store NAO aceita. Veja keystore.properties.exemplo."
+        )
+        signingConfigs.getByName("debug")
+      }
     }
   }
   compileOptions {
@@ -60,6 +98,11 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+
+  // Onde o Room grava o retrato de cada versao do banco. Ver o comentario do
+  // exportSchema em AppDatabase: sem isto as migracoes das versoes 1 a 5 se
+  // perderam e nao ha como reescreve-las.
+  ksp { arg("room.schemaLocation", "$projectDir/schemas") }
   lint {
     abortOnError = false
   }

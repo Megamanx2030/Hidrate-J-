@@ -82,20 +82,35 @@ object AlarmPermissionHelper {
         }
     }
 
-    fun requestIgnoreBatteryOptimizations(context: Context) {
+    /**
+     * Abre a LISTA de otimizacao de bateria do sistema.
+     *
+     * Antes o app usava ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, que abre
+     * uma caixinha "permitir?" e resolve em um toque -- so que ela exige a
+     * permissao REQUEST_IGNORE_BATTERY_OPTIMIZATIONS declarada, e a politica da
+     * Play so aceita essa permissao em app de saude em tempo real, navegacao ou
+     * chamada. Lembrete de agua nao entra na lista.
+     *
+     * Esta tela aqui nao exige permissao nenhuma. Em compensacao ela e a lista
+     * de TODOS os aplicativos: a pessoa precisa achar o "Hidrate Ja" e marcar
+     * "Nao otimizar". Por isso o aviso que leva ate aqui explica o passo a
+     * passo -- ver checkAlarmPermissions na MainActivity.
+     */
+    fun abrirListaDeOtimizacaoDeBateria(context: Context) {
         try {
-            val intent = Intent(
-                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                Uri.parse("package:${context.packageName}")
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            context.startActivity(
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
         } catch (e: Exception) {
-            // Alguns fabricantes bloqueiam o atalho direto.
-            // Cai para a lista geral de otimizacao de bateria.
+            // Fabricante sem essa tela: cai para os detalhes do proprio app,
+            // que sempre existe e tem o item de bateria dentro.
             try {
                 context.startActivity(
-                    Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:${context.packageName}")
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
             } catch (e2: Exception) {
                 e2.printStackTrace()

@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.utils.Registro
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -58,6 +61,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * a virada para zerar o status dos lembretes e rearmar os alarmes.
      */
     private val _diaDeHoje = MutableStateFlow(repository.getTodayDateString())
+
+    /**
+     * DECLARADO AQUI EM CIMA DE PROPOSITO, ANTES DO BLOCO init.
+     *
+     * Em Kotlin as propriedades sao inicializadas na ordem em que aparecem no
+     * arquivo, e o init corre junto com elas. Este campo estava declarado
+     * DEPOIS do init, que chama o iniciarVerificadorDeMinuto() -- ou seja, o
+     * verificador tentava coletar um Flow que ainda era nulo e o app morria com
+     * NullPointerException antes de mostrar a primeira tela.
+     *
+     * Mover a declaracao para cima e a correcao; nao ha nada de especial no
+     * campo em si.
+     */
+    private val _appEmPrimeiroPlano = MutableStateFlow(false)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val todayTotalMl: StateFlow<Int> = _diaDeHoje
@@ -178,43 +195,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         observarViradaDoDia()
 
-        // Verificador de 3 em 3 segundos, rede de seguranca para quando o
-        // AlarmManager atrasa com o app JA ABERTO na frente do usuario.
-        // Som e vibracao continuam sendo do AlarmManager + WaterAlarmService.
-        //
-        // A checagem de primeiro plano e parte da correcao da tela azul: o
-        // viewModelScope nao morre quando o app vai para segundo plano, entao
-        // este laco continuava rodando escondido e marcava _isAlertVisible.
-        // Resultado: o usuario voltava ao app minutos (ou horas) depois e dava
-        // de cara com a tela azul ja aberta, sem nada ter tocado.
+        iniciarVerificadorDeMinuto()
+    }
+
+    /**
+     * Rede de seguranca para quando o AlarmManager atrasa com o app ABERTO na
+     * frente do usuario. Som e vibracao continuam sendo do AlarmManager + do
+     * WaterAlarmService; aqui so aparece a tela azul.
+     *
+     * DUAS ECONOMIAS DE BATERIA, PELO MESMO MOTIVO: ISTO NAO E O QUE DISPARA O
+     * ALARME, E SIM UM PARA-QUEDAS.
+     *
+     * 1. O intervalo era de 3 segundos -- 1.200 despertares de CPU por hora.
+     *    Como a comparacao e por MINUTO (it.time == currentHHmm), 30 segundos
+     *    garante do mesmo jeito que nenhum minuto passe batido, com 90% menos
+     *    despertares.
+     *
+     * 2. O laco era um while(true) eterno que apenas PULAVA a checagem quando o
+     *    app estava em segundo plano -- ou seja, continuava acordando a CPU a
+     *    noite inteira para nao fazer nada. Agora ele vive dentro de um
+     *    collectLatest do estado de primeiro plano: quando o app sai da tela, o
+     *    collectLatest CANCELA o bloco anterior e o laco deixa de existir. Zero
+     *    despertar em segundo plano. E o mesmo efeito do repeatOnLifecycle, so
+     *    que valendo para a ViewModel, que e onde o laco mora.
+     */
+    private fun iniciarVerificadorDeMinuto() {
         viewModelScope.launch {
-            var lastTriggeredMinute: String? = null
-            val spZone = java.time.ZoneId.of("America/Sao_Paulo")
-            while (true) {
-                delay(3000)
-                if (!_appEmPrimeiroPlano.value) continue
-                if (_isAlertVisible.value) continue
+            _appEmPrimeiroPlano.collectLatest { emPrimeiroPlano ->
+                if (!emPrimeiroPlano) return@collectLatest
 
-                val nowSp = java.time.LocalTime.now(spZone)
-                val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
-
-                if (currentHHmm != lastTriggeredMinute) {
-                    val matchingReminder = allReminders.value
-                        .find { it.time == currentHHmm && !it.isCompleted && !it.isSkipped }
-                    if (matchingReminder != null) {
-                        lastTriggeredMinute = currentHHmm
-                        android.util.Log.d(
-                            "HidrateJa",
-                            "Poll 3s encontrou lembrete ${matchingReminder.id} em $currentHHmm"
-                        )
-                        triggerWaterAlert(matchingReminder.id, playMedia = false)
+                var ultimoMinutoDisparado: String? = null
+                val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+                while (true) {
+                    // A checagem vem ANTES da espera: assim o primeiro giro
+                    // acontece no instante em que o app volta para a tela, e nao
+                    // meio minuto depois.
+                    if (_isAlertVisible.value) {
+                        delay(30_000)
+                        continue
                     }
+
+                    val nowSp = java.time.LocalTime.now(spZone)
+                    val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
+
+                    if (currentHHmm != ultimoMinutoDisparado) {
+                        val matchingReminder = allReminders.value
+                            .find { it.time == currentHHmm && !it.isCompleted && !it.isSkipped }
+                        if (matchingReminder != null) {
+                            ultimoMinutoDisparado = currentHHmm
+                            Registro.d("Verificador achou o lembrete ${matchingReminder.id} em $currentHHmm")
+                            triggerWaterAlert(matchingReminder.id, playMedia = false)
+                        }
+                    }
+
+                    delay(30_000)
                 }
             }
         }
     }
-
-    private val _appEmPrimeiroPlano = MutableStateFlow(false)
 
     /** Chamado pelo onResume/onPause da MainActivity. */
     fun definirAppEmPrimeiroPlano(emPrimeiroPlano: Boolean) {
@@ -239,7 +277,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 delay(30_000)
                 val hoje = repository.getTodayDateString()
                 if (_diaDeHoje.value != hoje) {
-                    android.util.Log.d("HidrateJa", "Virou o dia: ${_diaDeHoje.value} -> $hoje")
+                    Registro.d("Virou o dia: ${_diaDeHoje.value} -> $hoje")
                     _diaDeHoje.value = hoje
                     resetDailyStatusIfNewDay()
                     markMissedRemindersAsSkipped()
@@ -286,7 +324,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun normalizarModoDeAviso() {
         val atual = db.userSettingsDao().getSettingsOnce() ?: return
         if (atual.alertsEnabled && atual.vibrateOnly) {
-            android.util.Log.d("HidrateJa", "Modos conflitantes gravados: mantendo Somente Vibrar")
+            Registro.d("Modos conflitantes gravados: mantendo Somente Vibrar")
             val corrigido = atual.copy(alertsEnabled = false)
             repository.updateSettings(corrigido)
             espelharModoNasPrefs(corrigido.alertsEnabled, corrigido.vibrateOnly)
@@ -378,18 +416,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun checkMissedAlertOnResume() {
         if (_isAlertVisible.value) {
-            android.util.Log.d("HidrateJa", "onResume: alerta ja visivel, nao checa")
+            Registro.d("onResume: alerta ja visivel, nao checa")
             return
         }
         // Voltar ao app depois da meia-noite tem que refazer a consulta do dia
         // na mesma hora, sem esperar o proximo giro do vigia.
         val hoje = repository.getTodayDateString()
         if (_diaDeHoje.value != hoje) {
-            android.util.Log.d("HidrateJa", "onResume: dia mudou para $hoje")
+            Registro.d("onResume: dia mudou para $hoje")
             _diaDeHoje.value = hoje
         }
         viewModelScope.launch {
-            android.util.Log.d("HidrateJa", "onResume: virada de dia + alerta perdido")
+            Registro.d("onResume: virada de dia + alerta perdido")
 
             // MESMA ORDEM DO init, E PELO MESMO MOTIVO.
             //
@@ -436,21 +474,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             JANELA_CARENCIA_MIN * 60_000L
         )
         if (id == null) {
-            android.util.Log.d("HidrateJa", "Nenhum alarme disparado recentemente")
+            Registro.d("Nenhum alarme disparado recentemente")
             return
         }
 
         val reminder = db.reminderDao().getAllRemindersOnce().find { it.id == id }
         if (reminder == null) {
-            android.util.Log.d("HidrateJa", "Alarme $id disparou para lembrete que nao existe mais")
+            Registro.d("Alarme $id disparou para lembrete que nao existe mais")
             return
         }
         if (reminder.isCompleted || reminder.isSkipped) {
-            android.util.Log.d("HidrateJa", "Alarme $id ja foi resolvido, sem tela azul")
+            Registro.d("Alarme $id ja foi resolvido, sem tela azul")
             return
         }
 
-        android.util.Log.d("HidrateJa", "Alerta perdido: ${reminder.id} das ${reminder.time}")
+        Registro.d("Alerta perdido: ${reminder.id} das ${reminder.time}")
         _pendingAlertReminderId.value = reminder.id
     }
 
@@ -538,7 +576,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun triggerWaterAlert(reminderId: Int? = null, playMedia: Boolean = true) {
         viewModelScope.launch {
-            android.util.Log.d("HidrateJa", "triggerWaterAlert id=$reminderId playMedia=$playMedia")
+            Registro.d("triggerWaterAlert id=$reminderId playMedia=$playMedia")
 
             // Dois caminhos podem pedir a MESMA tela azul quase junto: o
             // handleIntent (que veio do alarme) e o alerta perdido do onResume.
@@ -547,7 +585,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // nao tinha sido marcada como visivel. Sem esta guarda a contagem de
             // 10 segundos reiniciava do zero no meio do alerta.
             if (_isAlertVisible.value && reminderId != null && reminderId == activeReminderId) {
-                android.util.Log.d("HidrateJa", "triggerWaterAlert ABORTOU: ja esta na tela")
+                Registro.d("triggerWaterAlert ABORTOU: ja esta na tela")
                 return@launch
             }
 
@@ -559,26 +597,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // alerta continua funcionando porque passa reminderId nulo.
                 val s = userSettings.value
                 if (!s.alertsEnabled && !s.vibrateOnly) {
-                    android.util.Log.d("HidrateJa", "triggerWaterAlert ABORTOU: modo silencioso")
+                    Registro.d("triggerWaterAlert ABORTOU: modo silencioso")
                     return@launch
                 }
 
                 val reminder = db.reminderDao().getAllRemindersOnce().find { it.id == reminderId }
                 if (reminder != null && (reminder.isCompleted || reminder.isSkipped)) {
-                    android.util.Log.d(
-                        "HidrateJa",
-                        "triggerWaterAlert ABORTOU: isCompleted=${reminder.isCompleted} isSkipped=${reminder.isSkipped}"
+                    Registro.d("triggerWaterAlert ABORTOU: isCompleted=${reminder.isCompleted} isSkipped=${reminder.isSkipped}"
                     )
                     return@launch
                 }
                 if (reminderId == lastDismissedReminderId && (System.currentTimeMillis() - lastDismissedTimestamp < 2 * 60 * 1000)) {
-                    android.util.Log.d("HidrateJa", "triggerWaterAlert ABORTOU: dispensado ha menos de 2 min")
+                    Registro.d("triggerWaterAlert ABORTOU: dispensado ha menos de 2 min")
                     return@launch
                 }
             }
 
             activeReminderId = reminderId
-            android.util.Log.d("HidrateJa", "triggerWaterAlert -> tela azul VISIVEL")
+            Registro.d("triggerWaterAlert -> tela azul VISIVEL")
             _isAlertVisible.value = true
             _countdownSeconds.value = userSettings.value.ringtoneDurationSeconds
 
@@ -779,9 +815,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val horarioMudou = anterior != null && anterior.time != reminder.time
 
             val paraSalvar = if (horarioMudou) {
-                android.util.Log.d(
-                    "HidrateJa",
-                    "updateReminder ${reminder.id}: horario ${anterior?.time} -> ${reminder.time}, limpando status"
+                Registro.d("updateReminder ${reminder.id}: horario ${anterior?.time} -> ${reminder.time}, limpando status"
                 )
                 reminder.copy(
                     isCompleted = false,
@@ -890,9 +924,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // efeito nenhum e pareceria quebrado.
                 vibrateOnly = if (enabled) false else userSettings.value.vibrateOnly
             )
-            android.util.Log.d(
-                "HidrateJa",
-                "toggleAlertsEnabled($enabled) -> alertas=${updated.alertsEnabled} vibrar=${updated.vibrateOnly}"
+            Registro.d("toggleAlertsEnabled($enabled) -> alertas=${updated.alertsEnabled} vibrar=${updated.vibrateOnly}"
             )
             repository.updateSettings(updated)
             espelharModoNasPrefs(updated.alertsEnabled, updated.vibrateOnly)
@@ -907,9 +939,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // Ligar o so-vibrar desliga o som; desligar devolve o som.
                 alertsEnabled = !enabled
             )
-            android.util.Log.d(
-                "HidrateJa",
-                "toggleVibrateOnly($enabled) -> alertas=${updated.alertsEnabled} vibrar=${updated.vibrateOnly}"
+            Registro.d("toggleVibrateOnly($enabled) -> alertas=${updated.alertsEnabled} vibrar=${updated.vibrateOnly}"
             )
             repository.updateSettings(updated)
             espelharModoNasPrefs(updated.alertsEnabled, updated.vibrateOnly)
@@ -927,7 +957,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun limparRegistroEsquecido(reminder: Reminder) {
         viewModelScope.launch {
-            android.util.Log.d("HidrateJa", "Limpando registro de esquecido do lembrete ${reminder.id}")
+            Registro.d("Limpando registro de esquecido do lembrete ${reminder.id}")
             repository.updateReminder(
                 reminder.copy(
                     isSkipped = false,
@@ -960,9 +990,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val logs = db.waterLogDao().getLogsForDateRangeOnce(inicio, fim)
             val idsApagados = logs.map { it.id }.toSet()
-            android.util.Log.d(
-                "HidrateJa",
-                "Apagando consumo de $inicio a $fim: ${logs.size} registro(s)"
+            Registro.d("Apagando consumo de $inicio a $fim: ${logs.size} registro(s)"
             )
 
             db.waterLogDao().deleteLogsForDateRange(inicio, fim)

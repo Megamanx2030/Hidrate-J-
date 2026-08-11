@@ -6,8 +6,20 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!--
+        SCHEDULE_EXACT_ALARM sozinha, sem a USE_EXACT_ALARM.
+
+        As duas dao o mesmo poder de agendar no horario exato. A diferenca e
+        quem autoriza: a USE_EXACT_ALARM ja vem concedida, mas a Play Store so
+        aceita ela em app de despertador, timer ou calendario. Lembrete de
+        agua e zona cinzenta e o Google ja recusou casos parecidos. A
+        SCHEDULE_EXACT_ALARM nao pede formulario nenhum; em troca, o usuario
+        concede na mao.
+
+        O custo e um toque a mais na instalacao, e o app ja sabe pedir: veja
+        AlarmPermissionHelper.canScheduleExactAlarms e o aviso da MainActivity.
+    -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- NOVO: necessario para tocar o alarme por 10s com o app fechado.
@@ -27,10 +39,19 @@
          so que a tela azul fica restrita ao celular bloqueado. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
-    <!-- NOVO: permite pedir isencao da otimizacao de bateria.
-         ATENCAO: a Play Store exige justificativa para esta permissao.
-         Se for publicar, veja a observacao no README. -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!--
+        REMOVIDA a REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.
+
+        A politica da Play so aceita ela quando o app deixa de funcionar sem a
+        isencao: saude em tempo real, navegacao, chamadas. Lembrete de agua
+        nao entra nessa lista, e o proprio lint do Android acusava a violacao.
+
+        A FUNCAO CONTINUA. O que muda e o caminho: em vez do atalho que pede a
+        isencao direto (e que exige a permissao declarada), o app agora abre a
+        LISTA de otimizacao de bateria do sistema, onde a pessoa acha o
+        "Hidrate Ja" e marca "Nao otimizar". Essa tela nao exige permissao
+        nenhuma. Ver AlarmPermissionHelper.abrirListaDeOtimizacaoDeBateria.
+    -->
 
     <application
         android:allowBackup="true"
