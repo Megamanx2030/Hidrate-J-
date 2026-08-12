@@ -196,7 +196,9 @@ fun HomeScreen(
 
         // Welcome Greeting
         Text(
-            text = "Olá, ${settings.userName}",
+            // Sem nome cadastrado o cumprimento fica so "Olá!", em vez do
+            // "Olá, " solto com uma virgula pendurada no fim.
+            text = if (settings.userName.isBlank()) "Olá!" else "Olá, ${settings.userName}",
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold

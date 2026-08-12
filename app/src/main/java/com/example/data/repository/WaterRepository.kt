@@ -119,28 +119,28 @@ class WaterRepository(
         reminderDao.deleteReminder(reminder)
     }
 
+    /**
+     * O APP COMECA VAZIO. NENHUM LEMBRETE VEM DE FABRICA.
+     *
+     * Ate aqui a primeira abertura criava oito horarios sozinha (06:00, 06:50,
+     * 07:40, 08:30, 09:20, 10:10, 14:00 e 16:00). Quem instalava encontrava uma
+     * agenda que nunca montou, com horarios que podiam nao ter nada a ver com a
+     * rotina dela -- e um lembrete das 06:00 tocando no dia seguinte sem ter
+     * sido pedido.
+     *
+     * Agora a unica coisa criada e a linha de configuracoes, que precisa
+     * existir para o app ter onde guardar nome, meta e tamanho do copo. Nenhum
+     * horario, nenhum registro de agua, nenhum nome.
+     *
+     * O contrapeso disso ja esta na tela: sem nenhum horario cadastrado, a tela
+     * inicial e a de Lembretes avisam em vermelho que o aplicativo nao vai
+     * avisar, e apontam o "+ Adicionar". Sem esse aviso, um app mudo pareceria
+     * quebrado.
+     */
     suspend fun initDefaultDataIfNeeded() {
         val existingSettings = userSettingsDao.getSettingsOnce()
-        if (existingSettings?.hasSeededDefaults == true) {
-            return
-        }
+        if (existingSettings != null) return
 
-        if (reminderDao.countReminders() == 0) {
-            val todayDisplay = getTodayDisplayDateString()
-            val defaultReminders = listOf(
-                Reminder(time = "06:00", date = todayDisplay, title = "Lembrete Matinal"),
-                Reminder(time = "06:50", date = todayDisplay, title = "Hora da Água"),
-                Reminder(time = "07:40", date = todayDisplay, title = "Hora da Água"),
-                Reminder(time = "08:30", date = todayDisplay, title = "Hora da Água"),
-                Reminder(time = "09:20", date = todayDisplay, title = "Hora da Água"),
-                Reminder(time = "10:10", date = todayDisplay, title = "Hora da Água"),
-                Reminder(time = "14:00", date = todayDisplay, title = "Lembrete da Tarde"),
-                Reminder(time = "16:00", date = todayDisplay, title = "Hora da Água")
-            )
-            reminderDao.insertReminders(defaultReminders)
-        }
-
-        val updatedSettings = (existingSettings ?: UserSettings()).copy(hasSeededDefaults = true)
-        userSettingsDao.insertOrUpdateSettings(updatedSettings)
+        userSettingsDao.insertOrUpdateSettings(UserSettings(hasSeededDefaults = true))
     }
 }
