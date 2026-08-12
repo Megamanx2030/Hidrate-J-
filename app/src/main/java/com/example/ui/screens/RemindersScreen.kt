@@ -134,12 +134,25 @@ private fun EstadoDoInterruptor(
 @Composable
 private fun AjusteDeBateriaOpcional() {
     val context = LocalContext.current
-    var jaIsento by remember {
-        mutableStateOf(com.example.alarm.AlarmPermissionHelper.isIgnoringBatteryOptimizations(context))
-    }
+    val ajuda = com.example.alarm.AlarmPermissionHelper
+    var jaIsento by remember { mutableStateOf(ajuda.isIgnoringBatteryOptimizations(context)) }
     var mostrarPassoAPasso by remember { mutableStateOf(false) }
 
-    if (jaIsento) return
+    /**
+     * EM XIAOMI E AFINS, A BATERIA NEM E O PROBLEMA PRINCIPAL.
+     *
+     * Esses aparelhos tem um gerenciador proprio que impede o sistema de
+     * iniciar o aplicativo -- inclusive depois de reiniciar o celular, quando
+     * os alarmes precisam ser rearmados. Nenhuma permissao do Android resolve.
+     *
+     * Entao, quando essa tela existe no aparelho, ela vira o caminho oferecido,
+     * porque e a que de fato destrava o lembrete. Num Motorola ou num Pixel a
+     * tela nao existe, temTelaDeInicioAutomatico devolve false e tudo continua
+     * como antes.
+     */
+    val temInicioAutomatico = remember { ajuda.temTelaDeInicioAutomatico(context) }
+
+    if (jaIsento && !temInicioAutomatico) return
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -169,7 +182,10 @@ private fun AjusteDeBateriaOpcional() {
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    text = "Liberar a bateria para o Hidrate Já",
+                    text = if (temInicioAutomatico)
+                        "Deixar o Hidrate Já iniciar sozinho"
+                    else
+                        "Liberar a bateria para o Hidrate Já",
                     style = MaterialTheme.typography.bodyMedium,
                     color = PrimaryBlue,
                     fontWeight = FontWeight.Bold,
@@ -185,7 +201,7 @@ private fun AjusteDeBateriaOpcional() {
             shape = RoundedCornerShape(20.dp),
             title = {
                 Text(
-                    text = "Três passos",
+                    text = if (temInicioAutomatico) "Dois passos" else "Três passos",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = PrimaryBlue
@@ -197,11 +213,18 @@ private fun AjusteDeBateriaOpcional() {
                     // a pessoa precisa ler isto imediatamente antes de sair do
                     // app -- e nao um minuto antes, quando ainda nem sabia que
                     // ia para outra tela.
-                    text = "Vai abrir uma lista com todos os aplicativos do celular.\n\n" +
-                           "1) Procure Hidrate Já na lista\n" +
-                           "2) Toque no nome dele\n" +
-                           "3) Escolha Não otimizar\n\n" +
-                           "Depois volte para cá pela seta de voltar.",
+                    text = if (temInicioAutomatico)
+                        "Seu celular tem um controle próprio que impede o " +
+                        "aplicativo de ligar sozinho.\n\n" +
+                        "1) Procure Hidrate Já na lista que vai abrir\n" +
+                        "2) Ligue a chavinha ao lado do nome\n\n" +
+                        "Depois volte para cá pela seta de voltar."
+                    else
+                        "Vai abrir uma lista com todos os aplicativos do celular.\n\n" +
+                        "1) Procure Hidrate Já na lista\n" +
+                        "2) Toque no nome dele\n" +
+                        "3) Escolha Não otimizar\n\n" +
+                        "Depois volte para cá pela seta de voltar.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -209,10 +232,13 @@ private fun AjusteDeBateriaOpcional() {
             confirmButton = {
                 Button(
                     onClick = {
-                        com.example.alarm.AlarmPermissionHelper.abrirListaDeOtimizacaoDeBateria(context)
+                        if (temInicioAutomatico) {
+                            ajuda.abrirTelaDeInicioAutomatico(context)
+                        } else {
+                            ajuda.abrirListaDeOtimizacaoDeBateria(context)
+                        }
                         mostrarPassoAPasso = false
-                        jaIsento = com.example.alarm.AlarmPermissionHelper
-                            .isIgnoringBatteryOptimizations(context)
+                        jaIsento = ajuda.isIgnoringBatteryOptimizations(context)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
                     shape = RoundedCornerShape(12.dp),

@@ -118,6 +118,62 @@ object AlarmPermissionHelper {
         }
     }
 
+    // ---------- 3b. "Iniciar automaticamente" dos fabricantes ----------
+
+    /**
+     * A TELA QUE O ANDROID PURO NAO TEM, E QUE DECIDE TUDO EM XIAOMI.
+     *
+     * Xiaomi (MIUI/HyperOS), Huawei, Oppo, Vivo e alguns outros acrescentaram
+     * um gerenciador proprio, por cima do Android, que impede o aplicativo de
+     * ser iniciado pelo sistema. Ele barra ate o BOOT_COMPLETED -- ou seja, o
+     * celular reinicia e os alarmes nunca sao rearmados, sem erro nenhum
+     * aparecer. Nenhuma permissao do Android resolve isso, porque a trava nao e
+     * do Android: e do fabricante.
+     *
+     * A unica saida e o proprio usuario ligar o "Iniciar automaticamente" na
+     * central de seguranca do aparelho. Cada fabricante esconde essa opcao numa
+     * Activity com nome diferente; a lista abaixo cobre os mais comuns.
+     *
+     * Os nomes sao verificados com o PackageManager ANTES de tentar abrir: numa
+     * Motorola ou num Pixel nenhum deles existe, a funcao devolve false e o app
+     * nem oferece o caminho.
+     */
+    private val TELAS_DE_INICIO_AUTOMATICO = listOf(
+        "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity",
+        "com.huawei.systemmanager" to "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity",
+        "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+        "com.oppo.safe" to "com.oppo.safe.permission.startup.StartupAppListActivity",
+        "com.iqoo.secure" to "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity",
+        "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
+        "com.oneplus.security" to "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity",
+        "com.letv.android.letvsafe" to "com.letv.android.letvsafe.AutobootManageActivity"
+    )
+
+    private fun intentDeInicioAutomatico(context: Context): Intent? {
+        val pm = context.packageManager
+        for ((pacote, classe) in TELAS_DE_INICIO_AUTOMATICO) {
+            val intent = Intent().setComponent(android.content.ComponentName(pacote, classe))
+            val existe = pm.queryIntentActivities(
+                intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+            ).isNotEmpty()
+            if (existe) return intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return null
+    }
+
+    /** True so em aparelho que TEM essa tela (Xiaomi, Huawei, Oppo, Vivo...). */
+    fun temTelaDeInicioAutomatico(context: Context): Boolean =
+        intentDeInicioAutomatico(context) != null
+
+    fun abrirTelaDeInicioAutomatico(context: Context) {
+        val intent = intentDeInicioAutomatico(context) ?: return
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     // ---------- 4. Aviso por cima de outro aplicativo ----------
 
     /**
