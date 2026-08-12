@@ -16,7 +16,22 @@ android {
     applicationId = "br.com.stefanosabino.hidrateja"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
+    /**
+     * versionCode: NUMERO DE CONTROLE, SO PARA A PLAY STORE.
+     *
+     * A loja usa este numero para saber o que e mais novo, e ela NUNCA aceita o
+     * mesmo numero duas vezes -- nem que o pacote anterior tenha sido apagado ou
+     * tenha ficado como rascunho. Foi o que aconteceu no primeiro envio: "O
+     * codigo de versao 1 ja foi usado".
+     *
+     * REGRA PARA AS PROXIMAS VEZES: some 1 aqui a CADA pacote enviado para a
+     * loja, mesmo que a mudanca seja de uma virgula. Nunca repita, nunca diminua.
+     *
+     * versionName: e o que o usuario le na ficha da loja. Este pode repetir e
+     * pode ser qualquer texto. Continua "1.0" porque ninguem ainda instalou o
+     * aplicativo -- esta e a primeira versao que vai existir para o publico.
+     */
+    versionCode = 2
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
