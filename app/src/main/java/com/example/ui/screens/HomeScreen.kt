@@ -67,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.db.UserSettings
+import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.PrimaryContainer
 import com.example.ui.theme.SecondaryContainer
@@ -463,10 +464,32 @@ fun HomeScreen(
                 )
 
                 if (reminders.isEmpty()) {
+                    /**
+                     * SEM LEMBRETE, O APP NAO FAZ NADA -- E ISSO PRECISA
+                     * APARECER.
+                     *
+                     * Antes esta situacao era uma linha cinza e miuda,
+                     * "Nenhum lembrete salvo.", do mesmo tamanho de um rodape.
+                     * So que ela nao e um detalhe: sem nenhum horario cadastrado
+                     * o aplicativo simplesmente nao avisa mais nada, nunca. Um
+                     * idoso continuaria esperando o alarme tocar.
+                     *
+                     * Agora o aviso e vermelho, do tamanho do resto, diz o que
+                     * isso significa na pratica e aponta para onde resolver.
+                     */
                     Text(
-                        text = "Nenhum lembrete salvo.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Você não tem nenhum horário cadastrado, " +
+                               "então o aplicativo não vai avisar você.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ErrorRed,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Toque em Lembretes, aqui embaixo, e depois em " +
+                               "+ Adicionar para escolher seus horários.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 } else {
                     reminders.sortedBy { it.time }.forEach { reminder ->

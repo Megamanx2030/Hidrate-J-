@@ -60,6 +60,7 @@ import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -109,6 +110,125 @@ private fun EstadoDoInterruptor(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             softWrap = false
+        )
+    }
+}
+
+/**
+ * A SAIDA DE EMERGENCIA DA BATERIA, E SO ISSO.
+ *
+ * Este ajuste ERA a primeira coisa que o app pedia, num aviso que mandava a
+ * pessoa garimpar o "Hidrate Ja" numa lista alfabetica com todos os aplicativos
+ * do celular. Para um idoso isso nao e um passo, e uma barreira -- e o pior: nem
+ * era necessario. O alarme usa setAlarmClock, que a documentacao do Android
+ * garante que dispara mesmo com o celular no Doze, sem isencao nenhuma.
+ *
+ * Entao ele saiu da abertura e virou isto: um cartao discreto, no fim da tela de
+ * Lembretes, escrito na forma de PERGUNTA. Quem nao tem problema nenhum passa
+ * batido e nunca precisa tocar aqui. Quem tem um celular de fabricante
+ * agressivo, que mata aplicativo mesmo assim, acha o caminho quando precisar.
+ *
+ * O botao so aparece enquanto a isencao nao existe; depois de concedida, o
+ * cartao some sozinho e nao vira lixo permanente na tela.
+ */
+@Composable
+private fun AjusteDeBateriaOpcional() {
+    val context = LocalContext.current
+    var jaIsento by remember {
+        mutableStateOf(com.example.alarm.AlarmPermissionHelper.isIgnoringBatteryOptimizations(context))
+    }
+    var mostrarPassoAPasso by remember { mutableStateOf(false) }
+
+    if (jaIsento) return
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Os lembretes não estão tocando?",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Só use isto se o aviso estiver falhando. " +
+                       "Em quase todos os celulares não é preciso mexer aqui.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+            )
+            OutlinedButton(
+                onClick = { mostrarPassoAPasso = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "Liberar a bateria para o Hidrate Já",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = PrimaryBlue,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+
+    if (mostrarPassoAPasso) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { mostrarPassoAPasso = false },
+            shape = RoundedCornerShape(20.dp),
+            title = {
+                Text(
+                    text = "Três passos",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryBlue
+                )
+            },
+            text = {
+                Text(
+                    // O passo a passo fica AQUI, e nao dentro do botao, porque
+                    // a pessoa precisa ler isto imediatamente antes de sair do
+                    // app -- e nao um minuto antes, quando ainda nem sabia que
+                    // ia para outra tela.
+                    text = "Vai abrir uma lista com todos os aplicativos do celular.\n\n" +
+                           "1) Procure Hidrate Já na lista\n" +
+                           "2) Toque no nome dele\n" +
+                           "3) Escolha Não otimizar\n\n" +
+                           "Depois volte para cá pela seta de voltar.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        com.example.alarm.AlarmPermissionHelper.abrirListaDeOtimizacaoDeBateria(context)
+                        mostrarPassoAPasso = false
+                        jaIsento = com.example.alarm.AlarmPermissionHelper
+                            .isIgnoringBatteryOptimizations(context)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Entendi, abrir", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { mostrarPassoAPasso = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Cancelar", fontWeight = FontWeight.Bold)
+                }
+            }
         )
     }
 }
@@ -299,6 +419,10 @@ fun RemindersScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        AjusteDeBateriaOpcional()
+
+        Spacer(modifier = Modifier.height(20.dp))
+
         // Chime Choice Section
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -472,6 +596,35 @@ fun RemindersScreen(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     )
+                }
+
+                /**
+                 * LISTA VAZIA NAO PODE SER UM CARTAO BRANCO EM BRANCO.
+                 *
+                 * Sem nenhum horario o cartao virava uma tirinha branca de dois
+                 * dedos de altura, sem uma palavra. Quem chega aqui depois de
+                 * apagar tudo nao tem como saber que o aplicativo parou de
+                 * avisar, nem que o caminho de volta e o "+ Adicionar" ali em
+                 * cima.
+                 */
+                if (reminders.isEmpty()) {
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)) {
+                        Text(
+                            text = "Nenhum horário cadastrado",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = ErrorRed,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Enquanto estiver assim, o aplicativo não vai avisar " +
+                                   "você de beber água.\n\n" +
+                                   "Toque no botão + Adicionar, logo acima, para escolher " +
+                                   "um horário.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
 
                 // AS FRASES LONGAS FICAM NUMA FAIXA SO DELAS.

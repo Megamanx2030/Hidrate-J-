@@ -166,11 +166,34 @@ class MainActivity : ComponentActivity() {
         if (permissionDialogShown) return
         if (viewModel.isAlertVisible.value) return  // nao atrapalha o alarme tocando
 
+        /**
+         * A ECONOMIA DE BATERIA SAIU DAQUI.
+         *
+         * Ela pedia para o usuario garimpar o "Hidrate Ja" numa lista
+         * alfabetica com todos os aplicativos do celular. Para um idoso isso
+         * nao e um passo, e uma barreira -- e era a PRIMEIRA coisa que o app
+         * mostrava.
+         *
+         * E, olhando com cuidado, esse pedido nem era necessario. O alarme e
+         * agendado com setAlarmClock (ver AlarmScheduler.schedule), e a
+         * documentacao do Android e explicita: "alarmes definidos com
+         * setAlarmClock continuam disparando normalmente; o sistema sai do Doze
+         * pouco antes deles". Os planos B da cadeia usam setAndAllowWhileIdle e
+         * setExactAndAllowWhileIdle, que tambem furam o Doze. Ou seja: a isencao
+         * de bateria nao e o que faz o lembrete tocar.
+         *
+         * Ela vira um cinto extra util em fabricante que mata app com
+         * agressividade, entao continua alcancavel -- mas como uma saida
+         * opcional na tela de Lembretes, para quem tiver problema de verdade,
+         * e nao como pedagio na abertura. Ver AjusteDeBateriaOpcional.
+         *
+         * As duas que sobraram sao mesmo obrigatorias, e as duas abrem uma tela
+         * do sistema com UM interruptor, ja no Hidrate Ja. Nada de lista.
+         */
         val semTelaCheia = !AlarmPermissionHelper.canUseFullScreenIntent(this)
         val semAlarmeExato = !AlarmPermissionHelper.canScheduleExactAlarms(this)
-        val semBateria = !AlarmPermissionHelper.isIgnoringBatteryOptimizations(this)
 
-        if (!semTelaCheia && !semAlarmeExato && !semBateria) return
+        if (!semTelaCheia && !semAlarmeExato) return
 
         permissionDialogShown = true
 
@@ -181,28 +204,11 @@ class MainActivity : ComponentActivity() {
                 "Toque em LIBERAR e ative a opção que aparecer.",
                 { AlarmPermissionHelper.openExactAlarmSettings(this) }
             )
-            semTelaCheia -> Pair(
+            else -> Pair(
                 "O aplicativo precisa de permissão para mostrar o aviso na tela " +
                 "cheia quando o celular estiver bloqueado.\n\n" +
                 "Toque em LIBERAR e ative a opção que aparecer.",
                 { AlarmPermissionHelper.openFullScreenIntentSettings(this) }
-            )
-            // O TEXTO MUDOU JUNTO COM O CAMINHO.
-            //
-            // Antes o botao abria uma caixinha "permitir?" e um toque resolvia.
-            // Aquele atalho exigia uma permissao que a Play Store nao aceita
-            // neste tipo de app, entao agora o botao abre a LISTA de todos os
-            // aplicativos. Sem o passo a passo escrito, a pessoa chega numa
-            // lista enorme e nao sabe o que fazer.
-            else -> Pair(
-                "O celular está economizando bateria e pode desligar os lembretes " +
-                "quando o aplicativo ficar um tempo fechado.\n\n" +
-                "Toque em LIBERAR. Vai abrir uma lista de aplicativos:\n\n" +
-                "1) Procure por Hidrate Já na lista\n" +
-                "2) Toque no nome dele\n" +
-                "3) Escolha Não otimizar (ou Não restringir)\n\n" +
-                "Depois é só voltar para cá.",
-                { AlarmPermissionHelper.abrirListaDeOtimizacaoDeBateria(this) }
             )
         }
 
