@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.utils.Zona
+
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -76,7 +78,6 @@ import com.example.ui.theme.SecondaryContainer
 fun HomeScreen(
     settings: UserSettings,
     todayTotalMl: Int,
-    monthlyTotalMl: Int,
     reminders: List<com.example.data.db.Reminder>,
     onAddWater: (Int) -> Unit,
     onOpenAddDialog: () -> Unit,
@@ -117,13 +118,8 @@ fun HomeScreen(
         label = "nivel_jarra"
     )
 
-    val monthlyGoalMl = (settings.monthlyGoalLiters * 1000).toInt().coerceAtLeast(1)
-    val monthlyProgress = (monthlyTotalMl.toFloat() / monthlyGoalMl.toFloat()).coerceIn(0f, 1f)
-    val monthlyDrunkLiters = String.format("%.1f", monthlyTotalMl / 1000f)
-    val monthlyTargetLiters = String.format("%.1f", settings.monthlyGoalLiters)
-    val monthlyRemainingLiters = String.format("%.1f", ((monthlyGoalMl - monthlyTotalMl).coerceAtLeast(0)) / 1000f)
 
-    val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+    val spZone = Zona.id()
 
     /**
      * O "Proximo lembrete" congelava.
@@ -253,17 +249,54 @@ fun HomeScreen(
                     )
                 }
                 Spacer(modifier = Modifier.width(14.dp))
+                /**
+                 * ESTE CARTAO NAO DIZIA O QUE HAVIA DENTRO DELE.
+                 *
+                 * Dizia "Configurar" e, embaixo, "Meta: 2,5 L · Copo: 250 ml".
+                 * Tres problemas, todos do mesmo tipo:
+                 *
+                 * 1. "Configurar" e o nome do MENU, nao do assunto. E a palavra
+                 *    que o aplicativo usa para si mesmo. A pessoa que quer mudar
+                 *    quanto bebe nao esta procurando "configurar" -- ela esta
+                 *    procurando a agua dela.
+                 *
+                 * 2. "Meta" e "Copo" com dois-pontos sao rotulo de formulario,
+                 *    nao lingua falada. "2,5 L por dia, em copos de 250 ml" e a
+                 *    mesma informacao dita como se diz.
+                 *
+                 * 3. NADA ALI CONTAVA QUE A CALCULADORA DE PESO EXISTE. Um
+                 *    recurso escondido atras de uma palavra generica e um
+                 *    recurso que ninguem usa -- e este foi pedido pelos
+                 *    proprios testadores. A terceira linha, em azul, e o convite
+                 *    que faltava.
+                 *
+                 * A terceira linha some quando a pessoa ja informou o peso: o
+                 * convite ja foi aceito, e repeti-lo para sempre viraria ruido.
+                 * No lugar dele entra o proprio peso, que e a confirmacao de que
+                 * o app guardou o que ela disse.
+                 */
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Configurar",
+                        text = "Minha meta de água",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Meta: $metaLitrosStr L  ·  Copo: ${settings.glassSizeMl} ml",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "$metaLitrosStr L por dia, em copos de ${settings.glassSizeMl} ml",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (settings.pesoKg > 0) {
+                            "Toque para mudar  ·  seu peso: ${settings.pesoKg} kg"
+                        } else {
+                            "Toque para mudar ou calcular pelo seu peso"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PrimaryBlue,
+                        fontWeight = FontWeight.Bold
                     )
                 }
                 Icon(

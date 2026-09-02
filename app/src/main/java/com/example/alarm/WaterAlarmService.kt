@@ -83,20 +83,39 @@ class WaterAlarmService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val reminderId = intent?.getIntExtra(EXTRA_REMINDER_ID, -1) ?: -1
-        if (reminderId == -1) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        
+
+        // OS PEDIDOS DE PARADA VEM ANTES DA CONFERENCIA DO ID.
+        //
+        // Estavam depois, e por isso o ACTION_STOP_ALARM NUNCA chegava aqui: o
+        // stop() nao poe reminder_id nenhum no intent, entao o id vinha -1 e o
+        // servico saia pelo "return" de cima sem passar pelo finishAlarm. Na
+        // pratica o som ate parava, mas por tabela -- pelo stopSelf e o
+        // onDestroy -- e sem soltar o wakelock pelo caminho combinado.
+        // Parar um alarme e justamente o que nao pode depender de sorte.
         if (intent?.action == ACTION_STOP_ALARM) {
             finishAlarm(removerNotificacao = false, reminderId = reminderId)
             return START_NOT_STICKY
         }
-        
+
         if (intent?.action == ACTION_STOP_AND_DISMISS) {
             finishAlarm(removerNotificacao = true, reminderId = reminderId)
             return START_NOT_STICKY
         }
+
+        if (reminderId == -1) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // O SERVICO PODE SER REAPROVEITADO PARA UM SEGUNDO ALARME.
+        //
+        // O stopSelf() do alarme anterior nao destroi a instancia na hora. Se
+        // outro lembrete chegar nessa fresta, o onStartCommand roda de novo no
+        // MESMO objeto -- e com o alreadyStopping ainda marcado como true, todo
+        // finishAlarm do alarme novo (inclusive o de seguranca dos 12 segundos)
+        // sairia sem fazer nada: som e vibracao ficariam presos ate o sistema
+        // matar o processo. Zerar a marca aqui e o que abre o novo ciclo.
+        alreadyStopping.set(false)
 
         val chimeType = intent?.getStringExtra(EXTRA_CHIME_TYPE) ?: "Sino Suave"
         val title = intent?.getStringExtra(EXTRA_TITLE) ?: "Hora da Água"

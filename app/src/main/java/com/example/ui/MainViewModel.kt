@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.utils.Zona
+
 import com.example.utils.Registro
 
 import android.app.Application
@@ -85,14 +87,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = 0
         )
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val monthlyTotalMl: StateFlow<Int> = _diaDeHoje
-        .flatMapLatest { repository.getMonthlyTotalMl() }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = 0
-        )
+    /*
+     * REMOVIDO O TOTAL MENSAL, E NAO E PERDA DE FUNCAO: ELE NUNCA APARECEU.
+     *
+     * Existia uma corrente inteira -- consulta no DAO, funcao no repositorio,
+     * StateFlow aqui, parametro na HomeScreen e cinco variaveis calculadas la
+     * dentro (progresso, litros bebidos, meta, quanto falta) -- e NENHUMA delas
+     * era desenhada na tela. O app somava o mes inteiro a cada registro de agua
+     * para jogar o resultado fora.
+     *
+     * Pior: a conta usava base diferente do resto. Todo o app soma por
+     * dateString ("2026-09-02"), o texto que fica gravado no registro; so o
+     * mensal somava por timestamp entre dois instantes. Nos registros antigos,
+     * gravados quando o app usava o fuso fixo de Sao Paulo, os dois podem
+     * discordar perto da meia-noite -- ou seja, a corrente morta ainda era a
+     * unica parte do app que podia dar um numero diferente do historico.
+     *
+     * E o monthlyGoalLiters do UserSettings? Continua no banco (tirar coluna
+     * pede migracao e nao vale o risco), mas e igualmente inerte: vale 60 L
+     * para todo mundo, nao ha tela nenhuma para muda-lo, e ele nem bate com a
+     * meta diaria -- 2,5 L por dia dao 75 L num mes de 30 dias, nao 60.
+     *
+     * QUEM MOSTRA TOTAL DE PERIODO E A TELA DE HISTORICO, e ela faz a conta
+     * certa: le os dias pelo mesmo dateString e soma os registros que leu. Para
+     * ver um mes fechado, basta escolher do dia 1 ao dia 30 em "Escolher Datas".
+     */
 
     val allReminders: StateFlow<List<Reminder>> = repository.allReminders
         .stateIn(
@@ -109,13 +128,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _periodoHistorico = MutableStateFlow(periodoPadrao())
     val periodoHistorico: StateFlow<Pair<String, String>> = _periodoHistorico.asStateFlow()
 
+    /**
+     * ISTO E O BUG DO "HISTORICO PAROU DE REGISTRAR".
+     *
+     * O SINTOMA: a pessoa bebe agua, confirma, a jarra da tela inicial sobe --
+     * e o Historico continua mostrando o mesmo de sempre, sem a agua de hoje.
+     * Parece que o app parou de gravar. Nao parou: o registro esta no banco. O
+     * que estava errado era a JANELA que a tela pedia.
+     *
+     * A CAUSA: _periodoHistorico nascia com "os ultimos 7 dias" calculados uma
+     * unica vez, no nascimento da ViewModel, e nunca mais era recalculado. O
+     * observarViradaDoDia cuidava do total de hoje e do reset dos lembretes,
+     * mas ninguem lembrava do periodo do historico.
+     *
+     * POR QUE ISSO APARECE TANTO NESTE APP: a ViewModel de um app de lembrete
+     * vive dias. A Activity e singleTask e fica na pilha; a pessoa nao "fecha"
+     * o app, so volta para a tela inicial do celular. Quem abriu no dia 2 e
+     * voltou no dia 6 ainda tinha a tela pedindo os dias 27 a 2 -- e o dia 6
+     * simplesmente nao estava na consulta. So matar o app pela lista de
+     * recentes resolvia, o que ninguem descobre sozinho.
+     *
+     * A CORRECAO: na virada do dia (e ao voltar para o app), a janela padrao
+     * anda junto com o calendario. Mas SO a padrao: se a pessoa escolheu um
+     * periodo no calendario da tela, aquilo foi uma decisao dela e nao pode ser
+     * trocada pelas costas -- e para isso que serve a marca abaixo.
+     */
+    private var periodoEscolhidoPeloUsuario = false
+
     fun definirPeriodoHistorico(inicio: String, fim: String) {
+        periodoEscolhidoPeloUsuario = true
         val novo = inicio to fim
         if (_periodoHistorico.value != novo) _periodoHistorico.value = novo
     }
 
+    /** Ver o comentario de periodoEscolhidoPeloUsuario. */
+    private fun deslizarPeriodoPadraoSeNecessario() {
+        if (periodoEscolhidoPeloUsuario) return
+        val novo = periodoPadrao()
+        if (_periodoHistorico.value != novo) {
+            Registro.d("Historico: janela padrao deslizou para $novo")
+            _periodoHistorico.value = novo
+        }
+    }
+
     private fun periodoPadrao(): Pair<String, String> {
-        val zona = java.time.ZoneId.of("America/Sao_Paulo")
+        val zona = Zona.id()
         val fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
         val hoje = java.time.LocalDate.now(zona)
         return hoje.minusDays(6).format(fmt) to hoje.format(fmt)
@@ -225,7 +282,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (!emPrimeiroPlano) return@collectLatest
 
                 var ultimoMinutoDisparado: String? = null
-                val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+                val spZone = Zona.id()
                 while (true) {
                     // A checagem vem ANTES da espera: assim o primeiro giro
                     // acontece no instante em que o app volta para a tela, e nao
@@ -279,6 +336,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (_diaDeHoje.value != hoje) {
                     Registro.d("Virou o dia: ${_diaDeHoje.value} -> $hoje")
                     _diaDeHoje.value = hoje
+                    // Sem esta linha o Historico fica preso nos 7 dias de
+                    // quando o app foi aberto. Ver deslizarPeriodoPadraoSeNecessario.
+                    deslizarPeriodoPadraoSeNecessario()
                     resetDailyStatusIfNewDay()
                     markMissedRemindersAsSkipped()
                     scheduleAllReminders()
@@ -297,7 +357,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      *   - o scheduleAllReminders pulava os concluidos
      */
     private fun getNextOccurrenceDateString(time: String): String {
-        val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+        val spZone = Zona.id()
         val now = java.time.ZonedDateTime.now(spZone)
         val timeParts = time.split(":")
         val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 0
@@ -376,7 +436,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Marca como esquecido o que ja passou da hora e nao foi confirmado hoje. */
     private suspend fun markMissedRemindersAsSkipped() {
-        val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+        val spZone = Zona.id()
         val nowSp = java.time.LocalTime.now(spZone)
         val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
         val dateStr = repository.getTodayDisplayDateString()
@@ -426,6 +486,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Registro.d("onResume: dia mudou para $hoje")
             _diaDeHoje.value = hoje
         }
+        // Fora do "if" de proposito: o vigia da virada pode ter atualizado o
+        // _diaDeHoje enquanto o app estava em segundo plano e ter deixado a
+        // janela do historico para tras. Aqui a conferencia e barata e a
+        // funcao nao faz nada quando ja esta certo.
+        deslizarPeriodoPadraoSeNecessario()
         viewModelScope.launch {
             Registro.d("onResume: virada de dia + alerta perdido")
 
@@ -492,38 +557,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _pendingAlertReminderId.value = reminder.id
     }
 
+    /**
+     * A REGRA DE REARME SAIU DAQUI.
+     *
+     * Ela existia em duas copias -- esta e a do receiver de boot -- e as duas
+     * ja tinham divergido: so esta excluia o lembrete que esta disparando neste
+     * minuto. Agora as duas chamam o ReagendarAlarmes, que e o unico dono da
+     * regra. Ver o comentario de la.
+     */
     private fun scheduleAllReminders() {
         viewModelScope.launch {
-            val reminders = db.reminderDao().getAllRemindersOnce()
-            val chimeType = userSettings.value.chimeType
-            
-            // Get current time to avoid re-scheduling a reminder that is firing RIGHT NOW
-            val spZone = java.time.ZoneId.of("America/Sao_Paulo")
-            val nowSp = java.time.LocalTime.now(spZone)
-            val currentHHmm = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
-            
-            reminders.forEach { reminder ->
-                // Um lembrete ja concluido cujo horario JA PASSOU tem que ser
-                // rearmado assim mesmo: a proxima ocorrencia dele e amanha, e
-                // ate la o reset diario ja terá zerado o status. Sem isso ele
-                // so voltava a ser agendado quando o usuario abria o app
-                // depois da virada -- e se ficasse dias sem abrir, morria.
-                //
-                // O unico caso que NAO rearma e o concluido que ainda vai
-                // chegar hoje: tocaria para algo que o usuario ja marcou como
-                // bebido.
-                val jaPassouHoje = reminder.time <= currentHHmm
-                val concluidoEAindaVaiChegar = reminder.isCompleted && !jaPassouHoje
-
-                if (!concluidoEAindaVaiChegar && reminder.time != currentHHmm) {
-                    alarmScheduler.scheduleReminder(
-                        reminderId = reminder.id,
-                        time = reminder.time,
-                        chimeType = chimeType,
-                        title = reminder.title
-                    )
-                }
-            }
+            com.example.alarm.ReagendarAlarmes.tudo(getApplication(), "app aberto")
         }
     }
 
@@ -676,7 +720,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (reminder != null && !reminder.isCompleted) {
                     val logId = repository.addWaterLog(userSettings.value.glassSizeMl)
 
-                    val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+                    val spZone = Zona.id()
                     val nowSp = java.time.LocalTime.now(spZone)
                     val currentTimeStr = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
                     repository.updateReminder(
@@ -725,7 +769,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 val reminder = allReminders.value.find { it.id == remId }
                 if (reminder != null) {
-                    val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+                    val spZone = Zona.id()
                     val nowSp = java.time.LocalTime.now(spZone)
                     val timeStr = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
                     val dateStr = repository.getTodayDisplayDateString()
@@ -755,7 +799,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val currentReminder = db.reminderDao().getAllRemindersOnce().find { it.id == reminder.id } ?: return@launch
             if (!currentReminder.isCompleted) {
                 val logId = repository.addWaterLog(userSettings.value.glassSizeMl)
-                val spZone = java.time.ZoneId.of("America/Sao_Paulo")
+                val spZone = Zona.id()
                 val nowSp = java.time.LocalTime.now(spZone)
                 val timeStr = String.format("%02d:%02d", nowSp.hour, nowSp.minute)
                 repository.updateReminder(
@@ -870,13 +914,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * [pesoKg] nulo quer dizer "nao mexe no peso guardado".
+     *
+     * Esta funcao e chamada de dois lugares muito diferentes: da tela de
+     * Configurar, que sabe o peso, e do dialogo de adicionar agua, que so quer
+     * trocar o tamanho do copo e nao tem nada a ver com peso. Sem o nulo, o
+     * segundo caminho teria que repassar o peso corretamente todas as vezes --
+     * e no dia em que alguem esquecesse, o peso da pessoa seria zerado em
+     * silencio ao ela registrar um copo de agua.
+     */
     fun saveUserSettings(
         name: String,
         dailyGoalMl: Int,
         monthlyGoalLiters: Float,
         glassSizeMl: Int,
         alertsEnabled: Boolean,
-        chimeType: String
+        chimeType: String,
+        pesoKg: Int? = null
     ) {
         viewModelScope.launch {
             val updated = userSettings.value.copy(
@@ -884,6 +939,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 dailyGoalMl = dailyGoalMl,
                 monthlyGoalLiters = monthlyGoalLiters,
                 glassSizeMl = glassSizeMl,
+                pesoKg = pesoKg ?: userSettings.value.pesoKg,
                 alertsEnabled = alertsEnabled,
                 // Mantem a exclusividade tambem por aqui: salvar as
                 // configuracoes com o som ligado nao pode reintroduzir o

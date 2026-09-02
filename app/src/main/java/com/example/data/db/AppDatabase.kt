@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [WaterLog::class, Reminder::class, UserSettings::class],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -62,6 +62,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * O peso do usuario, para a sugestao de meta por quilo.
+         *
+         * DEFAULT 0 quer dizer "nao informado": quem ja usava o app sobe a
+         * versao sem perder nada e sem ganhar um peso inventado. O campo e
+         * opcional na tela e continua opcional no banco.
+         */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE user_settings ADD COLUMN pesoKg INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -72,7 +85,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "hydracompanion_db"
                 )
-                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 /**
                  * O FALLBACK DEIXOU DE SER GERAL.
                  *

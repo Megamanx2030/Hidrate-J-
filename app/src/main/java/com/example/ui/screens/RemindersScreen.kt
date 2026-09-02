@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.utils.Zona
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -282,12 +284,12 @@ fun RemindersScreen(
     // Datas de referencia para escrever "hoje" e "amanhã" no lugar de
     // "09/08/2026". Mesmo formato e mesmo fuso que o resto do app grava.
     val hojeStr = remember {
-        val zona = java.time.ZoneId.of("America/Sao_Paulo")
+        val zona = Zona.id()
         java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
             .format(java.time.LocalDate.now(zona))
     }
     val amanhaStr = remember {
-        val zona = java.time.ZoneId.of("America/Sao_Paulo")
+        val zona = Zona.id()
         java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
             .format(java.time.LocalDate.now(zona).plusDays(1))
     }

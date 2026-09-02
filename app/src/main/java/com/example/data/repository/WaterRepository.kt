@@ -1,5 +1,7 @@
 package com.example.data.repository
 
+import com.example.utils.Zona
+
 import com.example.data.db.Reminder
 import com.example.data.db.ReminderDao
 import com.example.data.db.UserSettings
@@ -19,21 +21,29 @@ class WaterRepository(
     private val reminderDao: ReminderDao,
     private val userSettingsDao: UserSettingsDao
 ) {
-    private val spTimeZone = TimeZone.getTimeZone("America/Sao_Paulo")
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
-        timeZone = spTimeZone
-    }
-    private val displayDateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
-        timeZone = spTimeZone
-    }
+    /**
+     * OS FORMATADORES SAO CRIADOS NA HORA, NAO GUARDADOS NUM CAMPO.
+     *
+     * Eram dois SimpleDateFormat criados uma vez, no nascimento do repositorio,
+     * com o fuso gravado dentro. Dois problemas nisso:
+     *
+     * 1. SimpleDateFormat NAO E SEGURO ENTRE THREADS. Estes formatadores sao
+     *    usados de coroutines de IO e da thread principal ao mesmo tempo; um
+     *    objeto compartilhado ali pode devolver data corrompida, e o registro
+     *    de agua cairia num dia que nao existe.
+     *
+     * 2. O fuso ficava congelado no que valia quando o app abriu. Quem trocasse
+     *    de fuso (viagem) so veria o app se acertar depois de matar o processo.
+     *
+     * Criar o objeto a cada chamada custa praticamente nada -- estas funcoes
+     * rodam algumas dezenas de vezes por dia, nao milhares por segundo.
+     */
+    private fun formatador(padrao: String) =
+        SimpleDateFormat(padrao, Locale.getDefault()).apply { timeZone = Zona.fuso() }
 
-    fun getTodayDateString(): String {
-        return dateFormat.format(Date())
-    }
+    fun getTodayDateString(): String = formatador("yyyy-MM-dd").format(Date())
 
-    fun getTodayDisplayDateString(): String {
-        return displayDateFormat.format(Date())
-    }
+    fun getTodayDisplayDateString(): String = formatador("dd/MM/yyyy").format(Date())
 
     val userSettings: Flow<UserSettings> = userSettingsDao.getSettings().map {
         it ?: UserSettings()
@@ -63,22 +73,6 @@ class WaterRepository(
 
     fun getTotalMlForDate(dateString: String): Flow<Int> {
         return waterLogDao.getDailySumMl(dateString).map { it ?: 0 }
-    }
-
-    fun getMonthlyTotalMl(): Flow<Int> {
-        val calendar = Calendar.getInstance(spTimeZone)
-        calendar.set(Calendar.DAY_OF_MONTH, 1)
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        val startOfMonthMs = calendar.timeInMillis
-
-        calendar.add(Calendar.MONTH, 1)
-        calendar.add(Calendar.MILLISECOND, -1)
-        val endOfMonthMs = calendar.timeInMillis
-
-        return waterLogDao.getSumMlForPeriod(startOfMonthMs, endOfMonthMs).map { it ?: 0 }
     }
 
     val allReminders: Flow<List<Reminder>> = reminderDao.getAllReminders()
@@ -120,27 +114,55 @@ class WaterRepository(
     }
 
     /**
-     * O APP COMECA VAZIO. NENHUM LEMBRETE VEM DE FABRICA.
+     * A AGENDA QUE VEM PRONTA NA PRIMEIRA ABERTURA: das 09:00 as 18:20, de
+     * 1h20 em 1h20.
      *
-     * Ate aqui a primeira abertura criava oito horarios sozinha (06:00, 06:50,
-     * 07:40, 08:30, 09:20, 10:10, 14:00 e 16:00). Quem instalava encontrava uma
-     * agenda que nunca montou, com horarios que podiam nao ter nada a ver com a
-     * rotina dela -- e um lembrete das 06:00 tocando no dia seguinte sem ter
-     * sido pedido.
+     * O HISTORICO DESTA DECISAO, porque ela ja mudou duas vezes:
      *
-     * Agora a unica coisa criada e a linha de configuracoes, que precisa
-     * existir para o app ter onde guardar nome, meta e tamanho do copo. Nenhum
-     * horario, nenhum registro de agua, nenhum nome.
+     * No comeco o app criava oito horarios comecando as 06:00. Isso foi
+     * retirado ("App comeca vazio") por um motivo legitimo: um lembrete das
+     * 06:00 tocava no dia seguinte da instalacao sem ninguem ter pedido, e
+     * acordar o usuario e a pior primeira impressao possivel.
      *
-     * O contrapeso disso ja esta na tela: sem nenhum horario cadastrado, a tela
-     * inicial e a de Lembretes avisam em vermelho que o aplicativo nao vai
-     * avisar, e apontam o "+ Adicionar". Sem esse aviso, um app mudo pareceria
-     * quebrado.
+     * So que o remedio criou outra doenca. Com o app comecando totalmente
+     * vazio, a pessoa instala e nao acontece nada -- ela precisa descobrir
+     * sozinha a tela de Lembretes e montar oito horarios na mao ANTES do app
+     * fazer qualquer coisa. Num app para idosos, isso e uma parede logo na
+     * porta de entrada, e foi o que apareceu no teste fechado: testadores que
+     * instalaram e nunca chegaram a ver um lembrete tocar.
+     *
+     * A AGENDA DE AGORA RESOLVE OS DOIS LADOS. Ela comeca as 09:00, ja bem
+     * depois da hora de acordar, e termina as 18:20, antes do jantar -- nenhum
+     * lembrete de madrugada, nenhum lembrete na hora de dormir. O intervalo de
+     * 1h20 distribui oito copos ao longo do dia util, que e a rotina que o app
+     * assume por padrao (2,5 L divididos em copos de 250 ml da exatamente 10
+     * copos; oito lembretes mais a agua das refeicoes fecha a conta).
+     *
+     * NADA DISSO E OBRIGATORIO: sao lembretes comuns, que a pessoa apaga,
+     * edita ou acrescenta na tela de Lembretes como quaisquer outros.
+     *
+     * O QUE CONTINUA VAZIO: o nome (a tela cumprimenta com "Ola!" ate a pessoa
+     * se apresentar), o historico de agua e o peso. Nenhum dado inventado sobre
+     * o usuario.
+     */
+    private val horariosDeFabrica = listOf(
+        "09:00", "10:20", "11:40", "13:00", "14:20", "15:40", "17:00", "18:20"
+    )
+
+    /**
+     * Roda UMA VEZ, na primeira abertura. A porta e a ausencia da linha de
+     * configuracoes: se ela ja existe, o app ja foi aberto antes e nao se mexe
+     * em mais nada -- inclusive para quem apagou todos os lembretes de
+     * proposito, que nao pode ve-los voltarem sozinhos na proxima abertura.
      */
     suspend fun initDefaultDataIfNeeded() {
         val existingSettings = userSettingsDao.getSettingsOnce()
         if (existingSettings != null) return
 
         userSettingsDao.insertOrUpdateSettings(UserSettings(hasSeededDefaults = true))
+
+        horariosDeFabrica.forEach { horario ->
+            reminderDao.insertReminder(Reminder(time = horario, title = "Hora da Água"))
+        }
     }
 }

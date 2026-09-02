@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.utils.Zona
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -49,7 +51,7 @@ fun EditReminderDialog(
     onSave: (time: String, date: String, title: String) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
-    val spTimeZone = TimeZone.getTimeZone("America/Sao_Paulo")
+    val spTimeZone = Zona.fuso()
     val todayFormatter = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply {
         timeZone = spTimeZone
     }

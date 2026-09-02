@@ -40,8 +40,14 @@ interface WaterLogDao {
     @Query("SELECT SUM(amountMl) FROM water_logs WHERE dateString = :dateString")
     fun getDailySumMl(dateString: String): Flow<Int?>
 
-    @Query("SELECT SUM(amountMl) FROM water_logs WHERE timestamp >= :startTimeMs AND timestamp <= :endTimeMs")
-    fun getSumMlForPeriod(startTimeMs: Long, endTimeMs: Long): Flow<Int?>
+    /*
+     * REMOVIDO o getSumMlForPeriod, que somava por timestamp.
+     *
+     * Era a UNICA consulta do app que nao usava dateString, e ninguem chamava
+     * ela: servia so ao total mensal que nunca chegou a ser desenhado na tela.
+     * Ver o comentario em MainViewModel. Somar por dois criterios diferentes no
+     * mesmo banco e um convite a dois numeros diferentes para a mesma agua.
+     */
 
     @Query("SELECT * FROM water_logs WHERE dateString = :dateString")
     suspend fun getLogsForDateOnce(dateString: String): List<WaterLog>

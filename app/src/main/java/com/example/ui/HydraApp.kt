@@ -44,7 +44,6 @@ fun HydraApp(viewModel: MainViewModel) {
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val settings by viewModel.userSettings.collectAsStateWithLifecycle()
     val todayTotalMl by viewModel.todayTotalMl.collectAsStateWithLifecycle()
-    val monthlyTotalMl by viewModel.monthlyTotalMl.collectAsStateWithLifecycle()
     val reminders by viewModel.allReminders.collectAsStateWithLifecycle()
     val logsDoPeriodo by viewModel.logsDoPeriodo.collectAsStateWithLifecycle()
     val totalDeRegistros by viewModel.totalDeRegistros.collectAsStateWithLifecycle()
@@ -180,7 +179,6 @@ fun HydraApp(viewModel: MainViewModel) {
                     0 -> HomeScreen(
                         settings = settings,
                         todayTotalMl = todayTotalMl,
-                        monthlyTotalMl = monthlyTotalMl,
                         reminders = reminders,
                         onAddWater = { amount -> viewModel.addWater(amount) },
                         onOpenAddDialog = { viewModel.openAddWaterDialog() },
@@ -231,8 +229,8 @@ fun HydraApp(viewModel: MainViewModel) {
             SettingsDialog(
                 settings = settings,
                 onDismiss = { viewModel.closeSettingsDialog() },
-                onSave = { name, dailyGoal, monthlyGoal, glassSize, alertsEnabled, chimeType ->
-                    viewModel.saveUserSettings(name, dailyGoal, monthlyGoal, glassSize, alertsEnabled, chimeType)
+                onSave = { name, dailyGoal, monthlyGoal, glassSize, alertsEnabled, chimeType, pesoKg ->
+                    viewModel.saveUserSettings(name, dailyGoal, monthlyGoal, glassSize, alertsEnabled, chimeType, pesoKg)
                 }
             )
         }

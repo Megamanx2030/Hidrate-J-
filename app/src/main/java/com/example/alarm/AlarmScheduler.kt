@@ -6,13 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.example.data.db.Reminder
-import java.util.Calendar
-import java.util.TimeZone
+import com.example.utils.Zona
 
 class AlarmScheduler(private val context: Context) {
 
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    private val spTimeZone: TimeZone = TimeZone.getTimeZone("America/Sao_Paulo")
 
     // ------------------------------------------------------------------
     // API publica
@@ -31,7 +29,7 @@ class AlarmScheduler(private val context: Context) {
     }
 
     /**
-     * IMPORTANTE: chame isto na abertura do app E no BootCompleteReceiver.
+     * IMPORTANTE: chame isto na abertura do app E no ReagendarAlarmesReceiver.
      *
      * POR QUE: o agendamento anterior dependia SO do encadeamento -- o alarme
      * de amanha era criado quando o de hoje disparava. Se um unico disparo
@@ -65,41 +63,25 @@ class AlarmScheduler(private val context: Context) {
     // Interno
     // ------------------------------------------------------------------
 
-    private fun parseTime(time: String): Pair<Int, Int>? {
-        val parts = time.split(":")
-        if (parts.size != 2) return null
-        val hour = parts[0].toIntOrNull() ?: return null
-        val minute = parts[1].toIntOrNull() ?: return null
-        if (hour !in 0..23 || minute !in 0..59) return null
-        return hour to minute
-    }
+    /**
+     * A CONTA MUDOU DE LUGAR, NAO DE REGRA.
+     *
+     * Ela vivia aqui dentro, lendo o relogio do sistema por conta propria e
+     * usando um fuso fixo de Sao Paulo. Agora mora no CalculoDeHorario, que
+     * recebe o "agora" e o fuso de fora -- e por isso pode ser conferida no PC,
+     * sem celular. Ver CalculoDeHorarioTest: virada de meia-noite, virada de
+     * ano, 29 de fevereiro, horario invalido e o caso de Manaus.
+     *
+     * O FUSO AGORA E O DO APARELHO (Zona.fuso()), nao mais Sao Paulo fixo.
+     * Ver o comentario do Zona: em Manaus o lembrete das 08:00 era armado para
+     * as 07:00, e de manha cedo chegava a pular o dia inteiro -- que e uma das
+     * causas do "as vezes nao toca".
+     */
+    private fun nextOccurrenceMillis(time: String): Long? =
+        CalculoDeHorario.proximaOcorrenciaMillis(time, System.currentTimeMillis(), Zona.fuso())
 
-    private fun nextOccurrenceMillis(time: String): Long? {
-        val (hour, minute) = parseTime(time) ?: return null
-        val calendar = Calendar.getInstance(spTimeZone).apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        // Se ja passou hoje, joga para amanha.
-        if (calendar.timeInMillis <= System.currentTimeMillis()) {
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-        }
-        return calendar.timeInMillis
-    }
-
-    private fun tomorrowMillis(time: String): Long? {
-        val (hour, minute) = parseTime(time) ?: return null
-        val calendar = Calendar.getInstance(spTimeZone).apply {
-            add(Calendar.DAY_OF_YEAR, 1)
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        return calendar.timeInMillis
-    }
+    private fun tomorrowMillis(time: String): Long? =
+        CalculoDeHorario.amanhaMillis(time, System.currentTimeMillis(), Zona.fuso())
 
     /**
      * O OPT-IN QUE FALTAVA PARA A TELA AZUL COM O CELULAR DESBLOQUEADO.

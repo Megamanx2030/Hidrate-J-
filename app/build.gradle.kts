@@ -24,15 +24,23 @@ android {
      * tenha ficado como rascunho. Foi o que aconteceu no primeiro envio: "O
      * codigo de versao 1 ja foi usado".
      *
-     * REGRA PARA AS PROXIMAS VEZES: some 1 aqui a CADA pacote enviado para a
-     * loja, mesmo que a mudanca seja de uma virgula. Nunca repita, nunca diminua.
+     * O NUMERO E QUEIMADO POR FAIXA DE TESTE, NAO POR APP. O 1 foi gasto numa
+     * tentativa e o 2 no teste interno; ao criar o teste FECHADO, o 2 ja estava
+     * usado e a loja recusou de novo. Cada envio, em qualquer faixa (interno,
+     * fechado, aberto ou producao), consome um numero para sempre.
+     *
+     * REGRA PARA AS PROXIMAS VEZES: some 1 aqui a CADA pacote enviado, mesmo
+     * que a mudanca seja de uma virgula, e mesmo que o envio anterior tenha
+     * falhado. Nunca repita, nunca diminua.
      *
      * versionName: e o que o usuario le na ficha da loja. Este pode repetir e
      * pode ser qualquer texto. Continua "1.0" porque ninguem ainda instalou o
      * aplicativo -- esta e a primeira versao que vai existir para o publico.
+     * Nao confundir com o "Nome da versao" que o Play Console pede na tela de
+     * envio: aquele e so uma etiqueta interna sua, invisivel para o usuario.
      */
-    versionCode = 2
-    versionName = "1.0"
+    versionCode = 4
+    versionName = "1.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

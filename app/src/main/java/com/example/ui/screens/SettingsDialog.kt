@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.data.db.UserSettings
+import com.example.utils.MetaPorPeso
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.SecondaryContainer
 
@@ -95,7 +96,7 @@ private fun TituloDoCampo(texto: String) {
 fun SettingsDialog(
     settings: UserSettings,
     onDismiss: () -> Unit,
-    onSave: (name: String, dailyGoalMl: Int, monthlyGoalLiters: Float, glassSizeMl: Int, alertsEnabled: Boolean, chimeType: String) -> Unit
+    onSave: (name: String, dailyGoalMl: Int, monthlyGoalLiters: Float, glassSizeMl: Int, alertsEnabled: Boolean, chimeType: String, pesoKg: Int) -> Unit
 ) {
     var name by remember { mutableStateOf(settings.userName) }
     var metaMl by remember { mutableStateOf(settings.dailyGoalMl.coerceAtLeast(500)) }
@@ -105,6 +106,14 @@ fun SettingsDialog(
     var metaDigitada by remember { mutableStateOf((settings.dailyGoalMl / 1000f).toString().replace('.', ',')) }
     var copoDigitado by remember { mutableStateOf(settings.glassSizeMl.toString()) }
 
+    // Peso zero significa "nunca informou": o campo abre vazio, e nao com um
+    // "0" que a pessoa teria que apagar antes de digitar.
+    var pesoDigitado by remember {
+        mutableStateOf(if (settings.pesoKg > 0) settings.pesoKg.toString() else "")
+    }
+    val pesoKg = pesoDigitado.toIntOrNull() ?: 0
+    val sugestaoMl = MetaPorPeso.sugerirMl(pesoKg)
+
     val ptBR = java.util.Locale("pt", "BR")
     val coposPorDia = (metaMl / copoMl.coerceAtLeast(1)).coerceAtLeast(1)
 
@@ -113,7 +122,7 @@ fun SettingsDialog(
         shape = RoundedCornerShape(22.dp),
         title = {
             Text(
-                text = "Configurar",
+                text = "Minha meta de água",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = PrimaryBlue
@@ -166,6 +175,187 @@ fun SettingsDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                /**
+                 * A SUGESTAO NAO MEXE NA META SOZINHA.
+                 *
+                 * Digitar o peso nao muda nada: aparece um cartao com a conta
+                 * pronta e um botao. So o botao troca a meta. Num app para
+                 * idosos, um numero que se altera sozinho enquanto a pessoa
+                 * digita e assustador -- ela nao sabe se estragou alguma coisa,
+                 * e nao tem como voltar ao valor que tinha antes.
+                 *
+                 * Por isso tambem o cartao mostra a meta ATUAL ao lado da
+                 * sugerida quando as duas sao diferentes: a pessoa ve o que vai
+                 * trocar pelo que ANTES de decidir.
+                 */
+                TituloDoCampo("Calcular pelo meu peso")
+
+                /**
+                 * O AVISO VEM ANTES DO NUMERO, E NAO DEPOIS.
+                 *
+                 * Estava embaixo do resultado, em letra pequena, do jeito que
+                 * ninguem le. Um aviso que aparece depois da conta chega tarde:
+                 * a pessoa ja viu "3,2 L" e ja formou a ideia.
+                 *
+                 * E ELE CITA AS SITUACOES POR NOME. "Nao e recomendacao medica"
+                 * e verdade e nao serve para nada: nao ajuda ninguem a
+                 * reconhecer que a frase e sobre ELE. Quem tem insuficiencia
+                 * cardiaca ou doenca renal costuma ter recebido do medico uma
+                 * ORDEM de beber menos, e precisa entender que esta conta nao
+                 * vale para o seu caso. Num app cujo publico e idoso, essa e
+                 * exatamente a parcela que mais tem essas condicoes.
+                 */
+                Text(
+                    text = "Conta simples de 30 ml por quilo, só para dar um ponto " +
+                        "de partida a quem não faz ideia de quanto beber. Não é " +
+                        "recomendação médica.\n\nSe você tem problema no coração ou " +
+                        "nos rins, ou se algum médico já mandou controlar quanto " +
+                        "líquido você bebe, não use esta conta: siga o que ele disse.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                )
+
+                OutlinedTextField(
+                    value = pesoDigitado,
+                    onValueChange = { novo ->
+                        // So digito, no maximo 3: um teclado numerico ainda
+                        // deixa colar texto, e "70kg" viraria peso invalido
+                        // sem a pessoa entender por que a sugestao sumiu.
+                        pesoDigitado = novo.filter { it.isDigit() }.take(3)
+                    },
+                    label = { Text("Seu peso em kg") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (sugestaoMl != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(SecondaryContainer)
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = String.format(
+                                    ptBR,
+                                    "Para %d kg, a sugestão é %.1f L por dia",
+                                    pesoKg,
+                                    sugestaoMl / 1000f
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = PrimaryBlue,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            /**
+                             * A CONTA ESCRITA POR EXTENSO, LOGO ABAIXO DO
+                             * RESULTADO.
+                             *
+                             * Um numero que aparece sozinho pede fe. "2,1 L"
+                             * nao explica nada, e num app para idoso a reacao
+                             * comum a um numero inexplicado nao e desconfiar --
+                             * e obedecer. Mostrar "70 x 30 ml = 2.100 ml" muda
+                             * o tipo de coisa que esta na tela: deixa de ser um
+                             * veredito e vira uma conta que a pessoa confere,
+                             * refaz de cabeca e discorda se quiser.
+                             *
+                             * QUANDO O LIMITE APERTA, A LINHA DIZ ISSO. Sem
+                             * essa segunda frase, quem pesa 110 kg leria
+                             * "110 x 30 ml = 3.300 ml" bem em cima de uma
+                             * sugestao de 3,0 L e concluiria que o app erra
+                             * conta -- quando na verdade ele esta segurando de
+                             * proposito. Ver o teto em MetaPorPeso.
+                             */
+                            val contaBrutaMl = pesoKg * MetaPorPeso.ML_POR_QUILO
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = String.format(
+                                    ptBR,
+                                    "A conta: %d × %d ml = %,d ml",
+                                    pesoKg,
+                                    MetaPorPeso.ML_POR_QUILO,
+                                    contaBrutaMl
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            val textoDoLimite = when {
+                                contaBrutaMl > MetaPorPeso.META_MAXIMA_ML ->
+                                    "O app não sugere mais de 3 L por dia."
+                                contaBrutaMl < MetaPorPeso.META_MINIMA_ML ->
+                                    "O app não sugere menos de 1,5 L por dia."
+                                else -> null
+                            }
+                            if (textoDoLimite != null) {
+                                Text(
+                                    text = textoDoLimite,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            if (sugestaoMl != metaMl) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = String.format(
+                                        ptBR,
+                                        "Sua meta hoje é %.1f L",
+                                        metaMl / 1000f
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        metaMl = sugestaoMl
+                                        metaDigitada = String.format(ptBR, "%.1f", sugestaoMl / 1000f)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                ) {
+                                    Text(
+                                        text = "Usar esta meta",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = Color.White
+                                    )
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "É a meta que você já está usando.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+
+                }
 
                 Spacer(modifier = Modifier.height(18.dp))
 
@@ -227,7 +417,8 @@ fun SettingsDialog(
                         settings.monthlyGoalLiters,
                         copoMl,
                         settings.alertsEnabled,
-                        settings.chimeType
+                        settings.chimeType,
+                        pesoKg
                     )
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),

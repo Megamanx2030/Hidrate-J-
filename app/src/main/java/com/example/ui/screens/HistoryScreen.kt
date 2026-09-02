@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.utils.Zona
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -120,8 +122,8 @@ fun HistoryScreen(
 ) {
     val scrollState = rememberScrollState()
 
-    val spTimeZone = TimeZone.getTimeZone("America/Sao_Paulo")
-    val spZoneId = ZoneId.of("America/Sao_Paulo")
+    val spTimeZone = Zona.fuso()
+    val spZoneId = Zona.id()
 
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var deleteRemindersToo by remember { mutableStateOf(false) }

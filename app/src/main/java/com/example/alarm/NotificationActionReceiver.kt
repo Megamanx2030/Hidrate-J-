@@ -1,5 +1,7 @@
 package com.example.alarm
 
+import com.example.utils.Zona
+
 import com.example.utils.Registro
 
 import android.content.BroadcastReceiver
@@ -44,7 +46,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         if (reminderId == -1) return
 
         val db = AppDatabase.getDatabase(context)
-        val spTimeZone = TimeZone.getTimeZone("America/Sao_Paulo")
+        val spTimeZone = Zona.fuso()
 
         when (intent.action) {
             "ACTION_DISMISS_WATER" -> {

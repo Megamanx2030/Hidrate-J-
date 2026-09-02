@@ -96,12 +96,30 @@
             android:name=".alarm.NotificationActionReceiver"
             android:exported="false" />
 
+        <!--
+            OS QUATRO MOMENTOS EM QUE O ANDROID APAGA OS ALARMES DO APP.
+
+            Este receiver so ouvia o boot. Faltavam tres, e cada um deles
+            deixava o usuario sem lembrete nenhum, em silencio. O caso mais
+            grave era o MY_PACKAGE_REPLACED: toda atualizacao vinda da Play
+            Store cancela os alarmes do pacote antigo, e a loja atualiza
+            sozinha, de madrugada, sem a pessoa saber. Ver o comentario de
+            ReagendarAlarmesReceiver.kt para o detalhe de cada acao.
+
+            exported="true" e obrigatorio: quem envia estas transmissoes e o
+            sistema, de fora do app. O receiver so aceita as acoes da lista
+            (conferidas de novo no codigo) e nao faz nada alem de rearmar.
+        -->
         <receiver
-            android:name=".alarm.BootCompleteReceiver"
+            android:name=".alarm.ReagendarAlarmesReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>
