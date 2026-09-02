@@ -38,6 +38,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.data.db.UserSettings
 import com.example.utils.MetaPorPeso
+import com.example.ui.theme.ErrorContainer
+import com.example.ui.theme.ErrorRed
+import com.example.ui.theme.OnErrorContainer
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.SecondaryContainer
 
@@ -209,17 +212,53 @@ fun SettingsDialog(
                  * exatamente a parcela que mais tem essas condicoes.
                  */
                 Text(
-                    text = "Conta simples de 30 ml por quilo, só para dar um ponto " +
-                        "de partida a quem não faz ideia de quanto beber. Não é " +
-                        "recomendação médica.\n\nSe você tem problema no coração ou " +
-                        "nos rins, ou se algum médico já mandou controlar quanto " +
-                        "líquido você bebe, não use esta conta: siga o que ele disse.",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "Seu peso × 30 ml. É só um ponto de partida, não é " +
+                        "conselho médico.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 10.dp)
+                        .padding(bottom = 8.dp)
                 )
+
+                /**
+                 * O AVISO PRECISA PARECER UM AVISO.
+                 *
+                 * Ele ja vinha antes do numero, mas escrito no mesmo cinza e no
+                 * mesmo tamanho do resto: virava paragrafo, e paragrafo em tela
+                 * de configuracao ninguem le. Numa caixa vermelha clara, com
+                 * borda, ele para de ser texto e passa a ser sinal.
+                 *
+                 * E ESTA CURTO DE PROPOSITO. A versao anterior tinha cinco
+                 * linhas e duas oracoes subordinadas ("ou se algum medico ja
+                 * mandou controlar quanto liquido voce bebe"). Aviso comprido
+                 * protege o autor e nao protege o leitor -- ainda mais o leitor
+                 * de 70 anos que este app foi feito para atender. Tres coisas,
+                 * ditas direto: coracao, rins, ordem do medico.
+                 */
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(ErrorContainer)
+                        .border(
+                            width = 2.dp,
+                            color = ErrorRed,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = "Não use se você tem problema no coração ou nos rins, " +
+                            "ou se o médico mandou controlar o quanto você bebe. " +
+                            "Siga o que ele disse.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = OnErrorContainer,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = pesoDigitado,

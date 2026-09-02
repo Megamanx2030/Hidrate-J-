@@ -447,6 +447,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (parts.size == 2) {
                     val h = parts[0].toIntOrNull() ?: 0
                     val m = parts[1].toIntOrNull() ?: 0
+
+                    /**
+                     * NAO SE ESQUECE UM LEMBRETE QUE AINDA NAO EXISTIA.
+                     *
+                     * Quem instalava o app as 17:30 abria a tela de Lembretes e
+                     * encontrava SEIS avisos vermelhos -- "Esqueceu hoje as
+                     * 10:20", "Esqueceu hoje as 11:40"... -- por horarios da
+                     * agenda de fabrica criados trinta segundos antes. A
+                     * primeira coisa que o aplicativo dizia a pessoa era que ela
+                     * tinha falhado.
+                     *
+                     * Vale para a agenda de fabrica e para qualquer lembrete
+                     * criado a mao: quem cadastra as 17h um horario das 10h nao
+                     * pode ver "esqueceu" no mesmo segundo.
+                     *
+                     * Lembretes antigos tem criadoEmMs = 0 e continuam como
+                     * antes -- zero e anterior a qualquer horario de hoje.
+                     */
+                    val instanteDeHoje = java.time.LocalDate.now(spZone)
+                        .atTime(h, m)
+                        .atZone(spZone)
+                        .toInstant()
+                        .toEpochMilli()
+                    if (instanteDeHoje < reminder.criadoEmMs) {
+                        Registro.d("Lembrete ${reminder.id} das ${reminder.time} ainda nao existia: nao e esquecido")
+                        return@forEach
+                    }
+
                     val reminderTime = java.time.LocalTime.of(h, m)
                     val duration = java.time.Duration.between(reminderTime, nowSp)
                     
@@ -886,7 +914,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addReminder(time: String, date: String, title: String) {
         viewModelScope.launch {
-            repository.addReminder(Reminder(time = time, date = date, title = title))
+            // Mesmo motivo da agenda de fabrica: quem cria as 17h um lembrete
+            // para as 10h nao pode ver "Esqueceu hoje as 10:00" no mesmo
+            // segundo. Ver criadoEmMs no Reminder.
+            repository.addReminder(
+                Reminder(
+                    time = time,
+                    date = date,
+                    title = title,
+                    criadoEmMs = System.currentTimeMillis()
+                )
+            )
 
             // CORRIGIDO: o delay(200) era corrida desnecessaria -- o insert
             // suspenso do Room ja commitou quando retorna. E findLast pegava

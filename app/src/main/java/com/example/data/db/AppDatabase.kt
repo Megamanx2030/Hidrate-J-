@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [WaterLog::class, Reminder::class, UserSettings::class],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -75,6 +75,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * O instante em que cada lembrete foi criado.
+         *
+         * DEFAULT 0 e o valor certo para quem ja tinha lembretes: zero e menor
+         * que qualquer horario de hoje, entao nada muda para eles. Ver o
+         * comentario de criadoEmMs no Reminder.
+         */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE reminders ADD COLUMN criadoEmMs INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -85,7 +98,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "hydracompanion_db"
                 )
-                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 /**
                  * O FALLBACK DEIXOU DE SER GERAL.
                  *

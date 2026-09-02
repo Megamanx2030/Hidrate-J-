@@ -162,7 +162,16 @@ class WaterRepository(
         userSettingsDao.insertOrUpdateSettings(UserSettings(hasSeededDefaults = true))
 
         horariosDeFabrica.forEach { horario ->
-            reminderDao.insertReminder(Reminder(time = horario, title = "Hora da Água"))
+            reminderDao.insertReminder(
+                Reminder(
+                    time = horario,
+                    title = "Hora da Água",
+                    // Sem isto, os horarios ja passados da agenda de fabrica
+                    // apareceriam em vermelho como "Esqueceu hoje" na PRIMEIRA
+                    // tela que a pessoa ve. Ver criadoEmMs no Reminder.
+                    criadoEmMs = System.currentTimeMillis()
+                )
+            )
         }
     }
 }
