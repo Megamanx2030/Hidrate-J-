@@ -39,7 +39,7 @@ android {
      * Nao confundir com o "Nome da versao" que o Play Console pede na tela de
      * envio: aquele e so uma etiqueta interna sua, invisivel para o usuario.
      */
-    versionCode = 4
+    versionCode = 5
     versionName = "1.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
